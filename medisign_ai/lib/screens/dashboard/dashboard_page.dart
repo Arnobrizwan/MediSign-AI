@@ -16,6 +16,7 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
   List<dynamic> recentInteractions = [];
   List<dynamic> savedPhrases = [];
   List<dynamic> medicationReminders = [];
+  bool isLoading = true;
 
   @override
   void initState() {
@@ -24,46 +25,60 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
   }
 
   Future<void> _loadUserData() async {
-    user = _auth.currentUser;
-    if (user == null) return;
+    try {
+      user = _auth.currentUser;
+      if (user == null) return;
 
-    final doc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-    final interactions = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user!.uid)
-        .collection('interactions')
-        .orderBy('timestamp', descending: true)
-        .limit(10)
-        .get();
+      final doc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+      final interactions = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('interactions')
+          .orderBy('timestamp', descending: true)
+          .limit(10)
+          .get();
 
-    final phrases = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user!.uid)
-        .collection('savedPhrases')
-        .get();
+      final phrases = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('savedPhrases')
+          .get();
 
-    final reminders = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user!.uid)
-        .collection('medications')
-        .where('upcoming', isEqualTo: true)
-        .get();
+      final reminders = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('medications')
+          .where('upcoming', isEqualTo: true)
+          .get();
 
-    setState(() {
-      userData = doc.data();
-      recentInteractions = interactions.docs.map((d) => d.data()).toList();
-      savedPhrases = phrases.docs.map((d) => d.data()).toList();
-      medicationReminders = reminders.docs.map((d) => d.data()).toList();
-    });
+      setState(() {
+        userData = doc.data();
+        recentInteractions = interactions.docs.map((d) => d.data()).toList();
+        savedPhrases = phrases.docs.map((d) => d.data()).toList();
+        medicationReminders = reminders.docs.map((d) => d.data()).toList();
+        isLoading = false;
+      });
+    } catch (e) {
+      print('❌ Error loading dashboard data: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to load data. Please try again later.')),
+        );
+        setState(() => isLoading = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (userData == null) {
+    if (isLoading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
     }
+
+    final langs = userData?['preferredLanguages'] as List<dynamic>? ?? [];
+    final langString = langs.isNotEmpty ? langs.join(', ') : 'N/A';
 
     return Scaffold(
       appBar: AppBar(
@@ -79,7 +94,8 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await _auth.signOut();
-              Navigator.pushReplacementNamed(context, '/login');
+              if (!mounted) return;
+              Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
             },
           ),
         ],
@@ -87,11 +103,13 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _buildProfileCard(),
+          _buildProfileCard(langString),
           const SizedBox(height: 16),
           _buildNavigationGrid(),
           const SizedBox(height: 16),
           _buildSectionTitle('Recent Interactions'),
+          if (recentInteractions.isEmpty)
+            const Text('No recent interactions.'),
           ...recentInteractions.map((item) => ListTile(
                 title: Text(item['summary'] ?? 'Interaction'),
                 subtitle: Text(item['date'] ?? ''),
@@ -101,25 +119,29 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
               )),
           const SizedBox(height: 16),
           _buildSectionTitle('Saved Phrases'),
+          if (savedPhrases.isEmpty)
+            const Text('No saved phrases yet.'),
           Wrap(
             spacing: 8,
             children: savedPhrases
                 .map((phrase) => ActionChip(
                       label: Text(phrase['text'] ?? ''),
                       onPressed: () {
-                        // Copy or use phrase
+                        // TODO: Add copy-to-clipboard or use logic
                       },
                     ))
                 .toList(),
           ),
           const SizedBox(height: 16),
           _buildSectionTitle('Medication Reminders'),
+          if (medicationReminders.isEmpty)
+            const Text('No upcoming medications.'),
           ...medicationReminders.map((med) => ListTile(
                 title: Text('${med['name']} at ${med['time']}'),
                 trailing: ElevatedButton(
                   child: const Text('Confirm Taken'),
                   onPressed: () {
-                    // Confirm taken action
+                    // TODO: Add confirm-taken logic
                   },
                 ),
               )),
@@ -128,7 +150,7 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     );
   }
 
-  Widget _buildProfileCard() {
+  Widget _buildProfileCard(String langString) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -150,7 +172,7 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
                   Text(userData?['displayName'] ?? 'Patient',
                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   Text('ID: ${userData?['patientId'] ?? 'N/A'}'),
-                  Text('Languages: ${userData?['preferredLanguages']?.join(', ') ?? 'N/A'}'),
+                  Text('Languages: $langString'),
                 ],
               ),
             ),
@@ -209,6 +231,9 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold));
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+    );
   }
 }

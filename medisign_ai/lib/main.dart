@@ -29,6 +29,7 @@ import 'screens/medical_records/medical_records_page.dart';
 import 'screens/prescription_management/prescriptions_page.dart';
 import 'screens/hospital_guide/hospital_guide_page.dart';
 import 'screens/billing/billing_page.dart';
+import 'screens/login/edit_profile_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -78,6 +79,7 @@ class MediSignApp extends StatelessWidget {
         '/prescription_management': (context) => const PrescriptionsPage(),
         '/hospital_guide': (context) => const HospitalGuidePage(),
         '/billing': (context) => const BillingPage(),
+        '/editProfile': (context) => const EditProfilePage(),
       },
     );
   }

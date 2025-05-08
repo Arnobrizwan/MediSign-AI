@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 import '../login/login_page.dart';
 
 class RegistrationPage extends StatefulWidget {
@@ -16,6 +19,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
   final TextEditingController passwordController = TextEditingController();
   final TextEditingController confirmPasswordController = TextEditingController();
   String? selectedLanguage;
+  File? profileImage;
 
   bool agreedToTerms = false;
   bool showPassword = false;
@@ -24,6 +28,36 @@ class _RegistrationPageState extends State<RegistrationPage> {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
+
+  Future<String> generatePatientId() async {
+    final counterRef = _firestore.collection('counters').doc('patientCounter');
+    final counterSnap = await counterRef.get();
+
+    int currentCount = counterSnap.exists ? counterSnap['count'] : 0;
+    int newCount = currentCount + 1;
+
+    await counterRef.set({'count': newCount});
+
+    return 'PAT-${newCount.toString().padLeft(3, '0')}';
+  }
+
+  Future<void> pickProfileImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        profileImage = File(pickedFile.path);
+      });
+    }
+  }
+
+  Future<String?> uploadProfileImage(String uid) async {
+    if (profileImage == null) return null;
+    final ref = _storage.ref().child('profile_pictures/$uid.jpg');
+    await ref.putFile(profileImage!);
+    return await ref.getDownloadURL();
+  }
 
   Future<void> handleRegister() async {
     if (!agreedToTerms) {
@@ -50,13 +84,28 @@ class _RegistrationPageState extends State<RegistrationPage> {
         password: passwordController.text.trim(),
       );
 
-      // Save extra info in Firestore
-      await _firestore.collection('users').doc(userCredential.user!.uid).set({
-        'name': nameController.text.trim(),
-        'email': emailController.text.trim(),
-        'preferredLanguage': selectedLanguage ?? 'None',
-        'createdAt': Timestamp.now(),
-      });
+      final user = userCredential.user;
+      String? photoURL;
+
+      if (user != null) {
+        String patientId = await generatePatientId();
+        photoURL = await uploadProfileImage(user.uid);
+
+        await user.updateDisplayName(nameController.text.trim());
+        if (photoURL != null) {
+          await user.updatePhotoURL(photoURL);
+        }
+
+        await _firestore.collection('users').doc(user.uid).set({
+          'uid': user.uid,
+          'patientId': patientId,
+          'name': nameController.text.trim(),
+          'email': user.email,
+          'preferredLanguage': selectedLanguage ?? 'None',
+          'photoUrl': photoURL ?? '',
+          'createdAt': Timestamp.now(),
+        });
+      }
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Account created! Please log in.')),
@@ -110,7 +159,18 @@ class _RegistrationPageState extends State<RegistrationPage> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              const Icon(Icons.person_add_alt_1_outlined, size: 64, color: Color(0xFFF45B69)),
+              GestureDetector(
+                onTap: pickProfileImage,
+                child: CircleAvatar(
+                  radius: 50,
+                  backgroundImage: profileImage != null
+                      ? FileImage(profileImage!)
+                      : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
+                  child: profileImage == null
+                      ? const Icon(Icons.camera_alt, size: 32, color: Colors.white)
+                      : null,
+                ),
+              ),
               const SizedBox(height: 16),
               const Text('Nice to see you!',
                   style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),

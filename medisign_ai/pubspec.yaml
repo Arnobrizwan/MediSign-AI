@@ -11,8 +11,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8
-
   # 🔑 State Management & Hooks
   provider: ^6.1.0
   flutter_hooks: ^0.20.3
@@ -22,10 +20,16 @@ dependencies:
   firebase_auth: ^4.17.4
   cloud_firestore: ^4.15.4
   firebase_storage: ^11.7.4
+  firebase_analytics: ^10.8.4
+  firebase_crashlytics: ^3.5.4
+  cloud_functions: ^4.7.4
+
+  # 🔐 Sign-In Providers
   google_sign_in: ^6.2.1
   sign_in_with_apple: ^7.0.1
-  cloud_functions: ^4.7.4
-  
+
+  # 📸 Image & File Handling
+  image_picker: ^1.0.7
 
   # 🎨 Styling, Animations, and UI Kits
   animated_text_kit: ^4.2.2
@@ -38,14 +42,9 @@ dependencies:
   # 🌐 HTTP & Networking
   http: ^1.2.1
 
-  # 🔐 Others (if needed for analytics or crash reporting)
-  firebase_analytics: ^10.8.4
-  firebase_crashlytics: ^3.5.4
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
   flutter_lints: ^3.0.1
 
 flutter:
