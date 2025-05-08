@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../login/login_page.dart';
 
 class RegistrationPage extends StatefulWidget {
@@ -18,8 +20,12 @@ class _RegistrationPageState extends State<RegistrationPage> {
   bool agreedToTerms = false;
   bool showPassword = false;
   bool showConfirmPassword = false;
+  bool isLoading = false;
 
-  void handleRegister() {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<void> handleRegister() async {
     if (!agreedToTerms) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please agree to the Terms & Conditions')),
@@ -34,16 +40,55 @@ class _RegistrationPageState extends State<RegistrationPage> {
       return;
     }
 
-    // TODO: Connect to Firebase createUserWithEmailAndPassword
-    // For now, simulate success:
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Account created! Please log in.')),
-    );
+    setState(() {
+      isLoading = true;
+    });
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-    );
+    try {
+      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text.trim(),
+      );
+
+      // Save extra info in Firestore
+      await _firestore.collection('users').doc(userCredential.user!.uid).set({
+        'name': nameController.text.trim(),
+        'email': emailController.text.trim(),
+        'preferredLanguage': selectedLanguage ?? 'None',
+        'createdAt': Timestamp.now(),
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Account created! Please log in.')),
+      );
+
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+    } on FirebaseAuthException catch (e) {
+      String message = 'Registration failed.';
+
+      if (e.code == 'email-already-in-use') {
+        message = 'Email already in use.';
+      } else if (e.code == 'weak-password') {
+        message = 'Password is too weak.';
+      } else if (e.code == 'invalid-email') {
+        message = 'Invalid email address.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('An error occurred. Please try again.')),
+      );
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
   @override
@@ -78,8 +123,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.person_outline),
                   labelText: 'Name',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   filled: true,
                   fillColor: Colors.grey.shade100,
                 ),
@@ -90,8 +134,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.email_outlined),
                   labelText: 'Email',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   filled: true,
                   fillColor: Colors.grey.shade100,
                 ),
@@ -103,12 +146,9 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.lock_outline),
                   labelText: 'Password',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   suffixIcon: IconButton(
-                    icon: Icon(showPassword
-                        ? Icons.visibility
-                        : Icons.visibility_off),
+                    icon: Icon(showPassword ? Icons.visibility : Icons.visibility_off),
                     onPressed: () {
                       setState(() => showPassword = !showPassword);
                     },
@@ -124,12 +164,9 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.lock_outline),
                   labelText: 'Confirm Password',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   suffixIcon: IconButton(
-                    icon: Icon(showConfirmPassword
-                        ? Icons.visibility
-                        : Icons.visibility_off),
+                    icon: Icon(showConfirmPassword ? Icons.visibility : Icons.visibility_off),
                     onPressed: () {
                       setState(() => showConfirmPassword = !showConfirmPassword);
                     },
@@ -144,8 +181,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.language),
                   labelText: 'Preferred Sign Language',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   filled: true,
                   fillColor: Colors.grey.shade100,
                 ),
@@ -180,17 +216,18 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 ],
               ),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: handleRegister,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  minimumSize: const Size.fromHeight(50),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Register',
-                    style: TextStyle(color: Colors.white, fontSize: 18)),
-              ),
+              isLoading
+                  ? const CircularProgressIndicator()
+                  : ElevatedButton(
+                      onPressed: handleRegister,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        minimumSize: const Size.fromHeight(50),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text('Register',
+                          style: TextStyle(color: Colors.white, fontSize: 18)),
+                    ),
             ],
           ),
         ),

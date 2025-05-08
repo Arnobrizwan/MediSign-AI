@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../login/login_page.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
@@ -9,9 +10,11 @@ class ForgotPasswordPage extends StatefulWidget {
 }
 
 class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
   final TextEditingController emailController = TextEditingController();
+  bool isLoading = false;
 
-  void handleSendResetLink() {
+  Future<void> handleSendResetLink() async {
     String email = emailController.text.trim();
 
     if (email.isEmpty) {
@@ -21,16 +24,33 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       return;
     }
 
-    // TODO: Connect to Firebase sendPasswordResetEmail
-    // For now, simulate success:
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Password reset email sent. Please check your inbox.')),
-    );
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const LoginPage()),
-    );
+    setState(() => isLoading = true);
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password reset email sent. Please check your inbox.')),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+    } on FirebaseAuthException catch (e) {
+      String message = 'An error occurred';
+      if (e.code == 'user-not-found') {
+        message = 'No user found with this email.';
+      } else {
+        message = e.message ?? message;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: ${e.toString()}')),
+      );
+    } finally {
+      setState(() => isLoading = false);
+    }
   }
 
   @override
@@ -70,18 +90,21 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   filled: true,
                   fillColor: Colors.grey.shade100,
                 ),
+                keyboardType: TextInputType.emailAddress,
               ),
               const SizedBox(height: 24),
               ElevatedButton(
-                onPressed: handleSendResetLink,
+                onPressed: isLoading ? null : handleSendResetLink,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
                   minimumSize: const Size.fromHeight(50),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('Send Reset Link',
-                    style: TextStyle(color: Colors.white, fontSize: 18)),
+                child: isLoading
+                    ? const CircularProgressIndicator(color: Colors.white)
+                    : const Text('Send Reset Link',
+                        style: TextStyle(color: Colors.white, fontSize: 18)),
               ),
               const SizedBox(height: 16),
               TextButton(

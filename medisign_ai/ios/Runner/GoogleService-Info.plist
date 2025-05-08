@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>831291062644-1mqh1fdacthqkvei20tmfg75if2odnko.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.831291062644-1mqh1fdacthqkvei20tmfg75if2odnko</string>
+	<key>API_KEY</key>
+	<string>AIzaSyDL39pCbA5sdtx1V3S7SCfq2cGMbohIOe8</string>
+	<key>GCM_SENDER_ID</key>
+	<string>831291062644</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.medisignAi</string>
+	<key>PROJECT_ID</key>
+	<string>medisignai</string>
+	<key>STORAGE_BUCKET</key>
+	<string>medisignai.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:831291062644:ios:31176a4262b568ff625421</string>
+</dict>
+</plist>

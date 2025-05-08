@@ -1,216 +1,214 @@
 import 'package:flutter/material.dart';
-import '../login/login_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key});
+class PatientDashboardPage extends StatefulWidget {
+  const PatientDashboardPage({super.key});
+
+  @override
+  State<PatientDashboardPage> createState() => _PatientDashboardPageState();
+}
+
+class _PatientDashboardPageState extends State<PatientDashboardPage> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  User? user;
+  Map<String, dynamic>? userData;
+  List<dynamic> recentInteractions = [];
+  List<dynamic> savedPhrases = [];
+  List<dynamic> medicationReminders = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    user = _auth.currentUser;
+    if (user == null) return;
+
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+    final interactions = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user!.uid)
+        .collection('interactions')
+        .orderBy('timestamp', descending: true)
+        .limit(10)
+        .get();
+
+    final phrases = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user!.uid)
+        .collection('savedPhrases')
+        .get();
+
+    final reminders = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user!.uid)
+        .collection('medications')
+        .where('upcoming', isEqualTo: true)
+        .get();
+
+    setState(() {
+      userData = doc.data();
+      recentInteractions = interactions.docs.map((d) => d.data()).toList();
+      savedPhrases = phrases.docs.map((d) => d.data()).toList();
+      medicationReminders = reminders.docs.map((d) => d.data()).toList();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    Color primaryColor = const Color(0xFFF45B69);
-
-    String patientName = 'John Doe';
-    String patientId = 'P12345';
-    String preferredLanguages = 'BIM, English (Text), Braille Output';
-    List<String> recentInteractions = [
-      'Conversation with Dr. Smith - May 7',
-      'AI Check-in - May 6',
-    ];
-    List<String> savedPhrases = [
-      'I need assistance',
-      'Please explain again',
-    ];
-    List<String> badges = [
-      '7 Days Check-in Streak!',
-      'Learned 10 BIM Phrases!',
-    ];
+    if (userData == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          'Welcome, $patientName!',
-          style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
-        ),
+        title: Text('Welcome, ${userData?['displayName'] ?? 'Patient'}!'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings, color: Colors.black),
+            icon: const Icon(Icons.settings),
             onPressed: () {
-              Navigator.pushNamed(context, '/accessibility_settings');
+              Navigator.pushNamed(context, '/settings');
             },
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.black),
-            onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginPage()),
-              );
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await _auth.signOut();
+              Navigator.pushReplacementNamed(context, '/login');
             },
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10),
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              // Patient Profile Card
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildProfileCard(),
+          const SizedBox(height: 16),
+          _buildNavigationGrid(),
+          const SizedBox(height: 16),
+          _buildSectionTitle('Recent Interactions'),
+          ...recentInteractions.map((item) => ListTile(
+                title: Text(item['summary'] ?? 'Interaction'),
+                subtitle: Text(item['date'] ?? ''),
+                onTap: () {
+                  Navigator.pushNamed(context, '/transcript', arguments: item);
+                },
+              )),
+          const SizedBox(height: 16),
+          _buildSectionTitle('Saved Phrases'),
+          Wrap(
+            spacing: 8,
+            children: savedPhrases
+                .map((phrase) => ActionChip(
+                      label: Text(phrase['text'] ?? ''),
+                      onPressed: () {
+                        // Copy or use phrase
+                      },
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 16),
+          _buildSectionTitle('Medication Reminders'),
+          ...medicationReminders.map((med) => ListTile(
+                title: Text('${med['name']} at ${med['time']}'),
+                trailing: ElevatedButton(
+                  child: const Text('Confirm Taken'),
+                  onPressed: () {
+                    // Confirm taken action
+                  },
                 ),
-                elevation: 4,
-                child: ListTile(
-                  leading: const CircleAvatar(
-                    radius: 30,
-                    backgroundImage: AssetImage('assets/avatar_placeholder.png'),
-                  ),
-                  title: Text('ID: $patientId'),
-                  subtitle: Text('Preferred: $preferredLanguages'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.edit, color: Color(0xFFF45B69)),
-                    onPressed: () {
-                      Navigator.pushNamed(context, '/edit_profile');
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
+              )),
+        ],
+      ),
+    );
+  }
 
-              // Main Navigation Grid (including new features)
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 16,
-                mainAxisSpacing: 16,
+  Widget _buildProfileCard() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 30,
+              backgroundImage: userData?['photoUrl'] != null
+                  ? NetworkImage(userData!['photoUrl'])
+                  : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildNavCard(context, primaryColor, Icons.gesture, 'Translate Sign Language', '/sign_translate'),
-                  _buildNavCard(context, primaryColor, Icons.forum, 'Patient-Doctor Conversation', '/conversation_mode'),
-                  _buildNavCard(context, primaryColor, Icons.history, 'Medical Transcript History', '/transcript_history'),
-                  _buildNavCard(context, primaryColor, Icons.health_and_safety, 'AI Health Check-In', '/health_checkin'),
-                  _buildNavCard(context, primaryColor, Icons.video_call, 'Telemedicine Consultations', '/telemedicine'),
-                  _buildNavCard(context, primaryColor, Icons.school, 'Learn & Practice', '/learning_gamified'),
-                  _buildNavCard(context, primaryColor, Icons.local_hospital, 'Hospital Services', '/patient_locator'),
-                  _buildNavCard(context, primaryColor, Icons.help_outline, 'Tutorial & Support', '/tutorial_support'),
-                  _buildNavCard(context, primaryColor, Icons.family_restroom, 'Family & Caregiver Portal', '/family_portal'),
-                  _buildNavCard(context, primaryColor, Icons.calendar_today, 'Appointments', '/appointments'),
-                  _buildNavCard(context, primaryColor, Icons.folder_shared, 'My Health Records', '/health_records'),
-                  _buildNavCard(context, primaryColor, Icons.medical_services, 'Prescriptions', '/prescriptions'),
-                  _buildNavCard(context, primaryColor, Icons.map, 'Hospital Guide & Wayfinding', '/hospital_guide'),
-                  _buildNavCard(context, primaryColor, Icons.payment, 'Bills & Payments', '/bills_payments'),
+                  Text(userData?['displayName'] ?? 'Patient',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('ID: ${userData?['patientId'] ?? 'N/A'}'),
+                  Text('Languages: ${userData?['preferredLanguages']?.join(', ') ?? 'N/A'}'),
                 ],
               ),
-              const SizedBox(height: 20),
-
-              // Recent Interactions
-              _buildSectionHeader('Recent Interactions', primaryColor),
-              ...recentInteractions.map((item) => ListTile(
-                    title: Text(item),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-                    onTap: () {
-                      Navigator.pushNamed(context, '/transcript_history');
-                    },
-                  )),
-              const SizedBox(height: 20),
-
-              // Saved Phrases
-              _buildSectionHeader('Saved Phrases', primaryColor),
-              Wrap(
-                spacing: 8,
-                children: savedPhrases.map((phrase) {
-                  return ActionChip(
-                    label: Text(phrase),
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Copied: $phrase')),
-                      );
-                    },
-                    backgroundColor: Colors.grey.shade200,
-                  );
-                }).toList(),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {
-                    Navigator.pushNamed(context, '/transcript_history');
-                  },
-                  child: const Text('View All Saved', style: TextStyle(color: Color(0xFFF45B69))),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Medication Reminder
-              _buildSectionHeader('Medication Reminder', primaryColor),
-              Card(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 2,
-                child: ListTile(
-                  title: const Text('Upcoming: Vitamin D at 8:00 PM'),
-                  trailing: Wrap(
-                    spacing: 8,
-                    children: [
-                      ElevatedButton(
-                        onPressed: () {},
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        ),
-                        child: const Text('Confirm Taken'),
-                      ),
-                      OutlinedButton(
-                        onPressed: () {},
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                        ),
-                        child: const Text('Snooze'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Health Progress & Badges
-              _buildSectionHeader('Your Progress', primaryColor),
-              ...badges.map((badge) => ListTile(
-                    leading: const Icon(Icons.emoji_events, color: Color(0xFFF45B69)),
-                    title: Text(badge),
-                  )),
-            ],
-          ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () {
+                Navigator.pushNamed(context, '/editProfile');
+              },
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildNavCard(BuildContext context, Color color, IconData icon, String label, String route) {
-    return GestureDetector(
-      onTap: () => Navigator.pushNamed(context, route),
-      child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 4,
-        child: Center(
+  Widget _buildNavigationGrid() {
+    final items = [
+      {'label': 'Translate Sign Language', 'icon': Icons.gesture, 'route': '/translate'},
+      {'label': 'Patient-Doctor Conversation', 'icon': Icons.chat, 'route': '/conversation'},
+      {'label': 'Medical History', 'icon': Icons.history, 'route': '/history'},
+      {'label': 'AI Health Check-In', 'icon': Icons.health_and_safety, 'route': '/checkin'},
+      {'label': 'Telemedicine', 'icon': Icons.video_call, 'route': '/telemedicine'},
+      {'label': 'Learn & Practice', 'icon': Icons.school, 'route': '/learn'},
+      {'label': 'Hospital Services', 'icon': Icons.local_hospital, 'route': '/services'},
+      {'label': 'Tutorial & Support', 'icon': Icons.help, 'route': '/tutorial'},
+      {'label': 'Family Portal', 'icon': Icons.group, 'route': '/family'},
+    ];
+
+    return GridView.builder(
+      physics: const NeverScrollableScrollPhysics(),
+      shrinkWrap: true,
+      itemCount: items.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2, childAspectRatio: 3 / 2, crossAxisSpacing: 8, mainAxisSpacing: 8),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        return ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFF45B69),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: () {
+            Navigator.pushNamed(context, item['route']);
+          },
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 40, color: color),
+              Icon(item['icon'], size: 32, color: Colors.white),
               const SizedBox(height: 8),
-              Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14)),
+              Text(item['label'], style: const TextStyle(color: Colors.white), textAlign: TextAlign.center),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildSectionHeader(String title, Color color) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-    );
+  Widget _buildSectionTitle(String title) {
+    return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold));
   }
 }

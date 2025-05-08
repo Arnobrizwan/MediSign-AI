@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
-import '../login/registration_page.dart';
-import '../login/forgot_password_page.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import '../dashboard/dashboard_page.dart';
 import '../admin_dashboard/admin_dashboard_page.dart';
+import 'registration_page.dart';
+import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -12,12 +17,14 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
   bool rememberMe = false;
   bool showPassword = false;
   bool signLanguageMode = false;
   bool brailleMode = false;
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
+  bool isLoading = false;
 
   void showAccessibilityModal() {
     showModalBottomSheet(
@@ -28,10 +35,8 @@ class _LoginPageState extends State<LoginPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Accessibility Options',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
+              const Text('Accessibility Options',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               SwitchListTile(
                 title: const Text('Enable Sign Language Mode (Visuals)'),
                 value: signLanguageMode,
@@ -56,8 +61,7 @@ class _LoginPageState extends State<LoginPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFF45B69),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                      borderRadius: BorderRadius.circular(20)),
                 ),
                 child: const Text('Apply Settings'),
               ),
@@ -68,19 +72,124 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  void handleLogin() {
-    // TODO: Replace with real Firebase auth logic
-    bool isAdmin = emailController.text == 'admin@example.com';
-    if (isAdmin) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const AdminDashboardPage()),
+  Future<void> handleLogin() async {
+    setState(() => isLoading = true);
+    try {
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+        email: emailController.text.trim(),
+        password: passwordController.text.trim(),
       );
+      await _routeUserByRole(userCredential.user);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Login failed: ${e.toString()}')),
+      );
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> handleGoogleLogin() async {
+    setState(() => isLoading = true);
+    try {
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) return;
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      UserCredential userCredential = await _auth.signInWithCredential(credential);
+      await _saveUserToFirestore(userCredential.user, 'google');
+      await _routeUserByRole(userCredential.user);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Google sign-in failed')),
+      );
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> handleAppleLogin() async {
+    setState(() => isLoading = true);
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+      );
+
+      final oauthCredential = OAuthProvider("apple.com").credential(
+        idToken: credential.identityToken,
+        accessToken: credential.authorizationCode,
+      );
+
+      UserCredential userCredential = await _auth.signInWithCredential(oauthCredential);
+      await _saveUserToFirestore(userCredential.user, 'apple');
+      await _routeUserByRole(userCredential.user);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Apple sign-in failed')),
+      );
+    } finally {
+      setState(() => isLoading = false);
+    }
+  }
+
+  Future<String> _fetchWelcomeMessageFromGemini(String email) async {
+    try {
+      final result = await FirebaseFunctions.instance
+          .httpsCallable('getGeminiWelcomeMessage')
+          .call({'email': email});
+      return result.data['message'] ?? 'Welcome!';
+    } catch (e) {
+      print('❌ Error fetching Gemini welcome message: $e');
+      return 'Welcome!';
+    }
+  }
+
+  Future<void> _routeUserByRole(User? user) async {
+    if (user == null) return;
+
+    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+    if (!doc.exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User record not found in Firestore.')),
+      );
+      return;
+    }
+
+    String role = doc.data()?['role'] ?? 'user';
+
+    // 🔥 Fetch live Gemini welcome message
+    String welcomeMessage = await _fetchWelcomeMessageFromGemini(user.email ?? '');
+
+    // Show AI welcome message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(welcomeMessage)),
+    );
+
+    if (role == 'admin') {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()));
     } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const DashboardPage()),
-      );
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const DashboardPage()));
+    }
+  }
+
+  Future<void> _saveUserToFirestore(User? user, String provider) async {
+    if (user == null) return;
+    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+    final doc = await docRef.get();
+    if (!doc.exists) {
+      await docRef.set({
+        'uid': user.uid,
+        'email': user.email,
+        'displayName': user.displayName ?? '',
+        'provider': provider,
+        'role': 'user',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
     }
   }
 
@@ -164,10 +273,8 @@ class _LoginPageState extends State<LoginPage> {
                     const Spacer(),
                     TextButton(
                       onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
-                        );
+                        Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const ForgotPasswordPage()));
                       },
                       child: const Text('Forgot Password?',
                           style: TextStyle(color: Color(0xFFF45B69))),
@@ -176,7 +283,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: handleLogin,
+                  onPressed: isLoading ? null : handleLogin,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
                     minimumSize: const Size.fromHeight(50),
@@ -184,29 +291,28 @@ class _LoginPageState extends State<LoginPage> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text('Continue',
-                      style: TextStyle(color: Colors.white, fontSize: 18)),
+                  child: isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Continue',
+                          style: TextStyle(color: Colors.white, fontSize: 18)),
                 ),
                 const SizedBox(height: 24),
                 const Text('OR',
-                    style: TextStyle(
-                        color: Colors.grey, fontWeight: FontWeight.bold)),
+                    style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _buildSocialIcon(Icons.g_mobiledata, Colors.red, 'Google'),
+                    _buildSocialIcon(Icons.g_mobiledata, Colors.red, 'Google', handleGoogleLogin),
                     const SizedBox(width: 24),
-                    _buildSocialIcon(Icons.apple, Colors.black, 'Apple'),
+                    _buildSocialIcon(Icons.apple, Colors.black, 'Apple', handleAppleLogin),
                   ],
                 ),
                 const SizedBox(height: 24),
                 TextButton(
                   onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const RegistrationPage()),
-                    );
+                    Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const RegistrationPage()));
                   },
                   child: const Text('Don\'t have an account? Register here.',
                       style: TextStyle(color: Color(0xFFF45B69))),
@@ -219,16 +325,9 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildSocialIcon(IconData icon, Color color, String label) {
+  Widget _buildSocialIcon(IconData icon, Color color, String label, Function() onTap) {
     return InkWell(
-      onTap: () {
-        print('$label icon clicked!');
-        // TODO: Add $label sign-in logic here
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const DashboardPage()),
-        );
-      },
+      onTap: isLoading ? null : onTap,
       borderRadius: BorderRadius.circular(30),
       child: Container(
         width: 50,

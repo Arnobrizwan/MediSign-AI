@@ -13,32 +13,40 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # 🔑 Useful UI & State Management
+  # 🔑 State Management & Hooks
   provider: ^6.1.0
   flutter_hooks: ^0.20.3
 
-  # 🌟 Firebase (auth, core, firestore, storage)
+  # 🌟 Firebase Integration
   firebase_core: ^2.25.4
-  firebase_auth: ^4.17.8
-  cloud_firestore: ^4.15.8
-  firebase_storage: ^11.6.9
+  firebase_auth: ^4.17.4
+  cloud_firestore: ^4.15.4
+  firebase_storage: ^11.7.4
+  google_sign_in: ^6.2.1
+  sign_in_with_apple: ^7.0.1
+  cloud_functions: ^4.7.4
+  
 
-  # 🎨 Styling & Animations
+  # 🎨 Styling, Animations, and UI Kits
   animated_text_kit: ^4.2.2
   lottie: ^2.7.0
 
-  # 🧠 AI & ML Helpers (if needed)
+  # 🧠 AI & ML Helpers
   tflite_flutter: ^0.10.3
   google_mlkit_translation: ^0.8.0
 
-  # 🌐 HTTP / APIs
+  # 🌐 HTTP & Networking
   http: ^1.2.1
+
+  # 🔐 Others (if needed for analytics or crash reporting)
+  firebase_analytics: ^10.8.4
+  firebase_crashlytics: ^3.5.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  flutter_lints: ^5.0.0
+  flutter_lints: ^3.0.1
 
 flutter:
   uses-material-design: true
