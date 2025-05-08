@@ -27,18 +27,17 @@ class _TranscriptHistoryPageState extends State<TranscriptHistoryPage> {
     user = _auth.currentUser;
     if (user == null) return;
 
-    final interactions = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user!.uid)
+    final snapshot = await FirebaseFirestore.instance
         .collection('interactions')
+        .doc(user!.uid)
+        .collection('logs')
         .orderBy('timestamp', descending: true)
         .get();
 
     setState(() {
-      allTranscripts = interactions.docs;
-      importantTranscripts = interactions.docs
-          .where((doc) => doc['isImportant'] == true)
-          .toList();
+      allTranscripts = snapshot.docs;
+      importantTranscripts =
+          snapshot.docs.where((doc) => doc['isImportant'] == true).toList();
       isLoading = false;
     });
   }
@@ -83,12 +82,16 @@ class _TranscriptHistoryPageState extends State<TranscriptHistoryPage> {
                   itemCount: transcriptsToShow.length,
                   itemBuilder: (context, index) {
                     final doc = transcriptsToShow[index];
+                    final timestamp = doc['timestamp']?.toDate();
+                    final formattedDate = timestamp != null
+                        ? '${timestamp.toLocal()}'
+                        : 'No date';
+
                     return Card(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                      margin:
+                          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       child: ListTile(
-                        title: Text(
-                            '${doc['type']} - ${doc['timestamp'].toDate().toLocal()}'),
+                        title: Text('${doc['type']} - $formattedDate'),
                         subtitle: Text(doc['summary'] ?? ''),
                         trailing: IconButton(
                           icon: Icon(

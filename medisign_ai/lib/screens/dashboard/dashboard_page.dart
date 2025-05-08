@@ -13,7 +13,9 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   User? user;
   Map<String, dynamic>? userData;
+  Map<String, dynamic>? progressData;
   List<dynamic> recentInteractions = [];
+  List<dynamic> importantTranscripts = [];
   List<dynamic> savedPhrases = [];
   List<dynamic> medicationReminders = [];
   bool isLoading = true;
@@ -24,38 +26,62 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     _loadUserData();
   }
 
+  Future<void> handleLogout() async {
+    await _auth.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+  }
+
   Future<void> _loadUserData() async {
     try {
       user = _auth.currentUser;
       if (user == null) return;
 
-      final doc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
-      final interactions = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user!.uid).get();
+
+      final interactionsSnap = await FirebaseFirestore.instance
           .collection('interactions')
+          .doc(user!.uid)
+          .collection('logs')
           .orderBy('timestamp', descending: true)
           .limit(10)
           .get();
 
-      final phrases = await FirebaseFirestore.instance
+      final importantSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('importantTranscripts')
+          .get();
+
+      final phrasesSnap = await FirebaseFirestore.instance
           .collection('users')
           .doc(user!.uid)
           .collection('savedPhrases')
           .get();
 
-      final reminders = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
+      final medsSnap = await FirebaseFirestore.instance
           .collection('medications')
-          .where('upcoming', isEqualTo: true)
+          .doc(user!.uid)
+          .collection('reminders')
+          .where('status', isEqualTo: 'Scheduled')
+          .orderBy('scheduledTime')
+          .get();
+
+      final progressDoc = await FirebaseFirestore.instance
+          .collection('progress')
+          .doc(user!.uid)
           .get();
 
       setState(() {
-        userData = doc.data();
-        recentInteractions = interactions.docs.map((d) => d.data()).toList();
-        savedPhrases = phrases.docs.map((d) => d.data()).toList();
-        medicationReminders = reminders.docs.map((d) => d.data()).toList();
+        userData = userDoc.data();
+        progressData = progressDoc.data();
+        recentInteractions = interactionsSnap.docs.map((d) => d.data()).toList();
+        importantTranscripts = importantSnap.docs.map((d) => d.data()).toList();
+        savedPhrases = phrasesSnap.docs.map((d) => d.data()).toList();
+        medicationReminders = medsSnap.docs.map((d) => {
+          ...d.data(),
+          'reminderId': d.id,
+        }).toList();
         isLoading = false;
       });
     } catch (e) {
@@ -72,12 +98,10 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final langs = userData?['preferredLanguages'] as List<dynamic>? ?? [];
+    final langs = (userData?['preferredLanguages'] as List<dynamic>?) ?? [];
     final langString = langs.isNotEmpty ? langs.join(', ') : 'N/A';
 
     return Scaffold(
@@ -86,17 +110,11 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.pushNamed(context, '/settings');
-            },
+            onPressed: () => Navigator.pushNamed(context, '/settings'),
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await _auth.signOut();
-              if (!mounted) return;
-              Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-            },
+            onPressed: handleLogout,
           ),
         ],
       ),
@@ -107,44 +125,20 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
           const SizedBox(height: 16),
           _buildNavigationGrid(),
           const SizedBox(height: 16),
+          _buildSectionTitle('Progress Tracking'),
+          _buildProgressSection(),
+          const SizedBox(height: 16),
           _buildSectionTitle('Recent Interactions'),
-          if (recentInteractions.isEmpty)
-            const Text('No recent interactions.'),
-          ...recentInteractions.map((item) => ListTile(
-                title: Text(item['summary'] ?? 'Interaction'),
-                subtitle: Text(item['date'] ?? ''),
-                onTap: () {
-                  Navigator.pushNamed(context, '/transcript', arguments: item);
-                },
-              )),
+          _buildInteractionList(recentInteractions),
+          const SizedBox(height: 16),
+          _buildSectionTitle('Important Transcripts'),
+          _buildInteractionList(importantTranscripts),
           const SizedBox(height: 16),
           _buildSectionTitle('Saved Phrases'),
-          if (savedPhrases.isEmpty)
-            const Text('No saved phrases yet.'),
-          Wrap(
-            spacing: 8,
-            children: savedPhrases
-                .map((phrase) => ActionChip(
-                      label: Text(phrase['text'] ?? ''),
-                      onPressed: () {
-                        // TODO: Add copy-to-clipboard or use logic
-                      },
-                    ))
-                .toList(),
-          ),
+          _buildSavedPhrases(),
           const SizedBox(height: 16),
           _buildSectionTitle('Medication Reminders'),
-          if (medicationReminders.isEmpty)
-            const Text('No upcoming medications.'),
-          ...medicationReminders.map((med) => ListTile(
-                title: Text('${med['name']} at ${med['time']}'),
-                trailing: ElevatedButton(
-                  child: const Text('Confirm Taken'),
-                  onPressed: () {
-                    // TODO: Add confirm-taken logic
-                  },
-                ),
-              )),
+          _buildMedicationReminders(),
         ],
       ),
     );
@@ -178,10 +172,36 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
             ),
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () {
-                Navigator.pushNamed(context, '/editProfile');
-              },
+              onPressed: () => Navigator.pushNamed(context, '/editProfile'),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProgressSection() {
+    if (progressData == null) {
+      return const Text('No progress data available.');
+    }
+
+    final steps = progressData?['stepsCompleted'] ?? 0;
+    final streak = progressData?['checkinStreak'] ?? 0;
+    final badges = (progressData?['badges'] as List<dynamic>? ?? []).join(', ');
+
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Steps Completed: $steps'),
+            const SizedBox(height: 4),
+            Text('Check-in Streak: $streak days'),
+            const SizedBox(height: 4),
+            Text('Badges: ${badges.isNotEmpty ? badges : 'None'}'),
           ],
         ),
       ),
@@ -234,6 +254,67 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildInteractionList(List<dynamic> list) {
+    if (list.isEmpty) {
+      return const Text('No data available.');
+    }
+    return Column(
+      children: list.map((item) {
+        return ListTile(
+          title: Text(item['summary'] ?? 'No summary'),
+          subtitle: Text(item['timestamp'] != null
+              ? (item['timestamp'] as Timestamp).toDate().toLocal().toString()
+              : ''),
+          onTap: () {
+            Navigator.pushNamed(context, '/transcript', arguments: item);
+          },
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSavedPhrases() {
+    if (savedPhrases.isEmpty) {
+      return const Text('No saved phrases yet.');
+    }
+    return Wrap(
+      spacing: 8,
+      children: savedPhrases.map((phrase) {
+        return ActionChip(
+          label: Text(phrase['text'] ?? ''),
+          onPressed: () {
+            // TODO: Add copy or insert logic
+          },
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildMedicationReminders() {
+    if (medicationReminders.isEmpty) {
+      return const Text('No upcoming medications.');
+    }
+    return Column(
+      children: medicationReminders.map((med) {
+        return ListTile(
+          title: Text('${med['name']} at ${med['scheduledTime']}'),
+          trailing: ElevatedButton(
+            child: const Text('Confirm Taken'),
+            onPressed: () async {
+              await FirebaseFirestore.instance
+                  .collection('medications')
+                  .doc(user!.uid)
+                  .collection('reminders')
+                  .doc(med['reminderId'])
+                  .update({'status': 'Taken'});
+              _loadUserData();
+            },
+          ),
+        );
+      }).toList(),
     );
   }
 }
