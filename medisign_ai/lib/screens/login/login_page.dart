@@ -173,7 +173,7 @@ class _LoginPageState extends State<LoginPage> {
     if (role == 'admin') {
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()));
     } else {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const DashboardPage()));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const PatientDashboardPage()));
     }
   }
 

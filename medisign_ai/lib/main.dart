@@ -56,7 +56,7 @@ class MediSignApp extends StatelessWidget {
         '/login': (context) => const LoginPage(),
         '/registration': (context) => const RegistrationPage(),
         '/forgot_password': (context) => const ForgotPasswordPage(),
-        '/dashboard': (context) => const DashboardPage(),
+        '/dashboard': (context) => const PatientDashboardPage(),
         '/sign_translate': (context) => const SignTranslatePage(),
         '/conversation_mode': (context) => const ConversationModePage(),
         '/accessibility_settings': (context) => const AccessibilitySettingsPage(),

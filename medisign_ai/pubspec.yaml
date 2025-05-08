@@ -30,6 +30,10 @@ dependencies:
 
   # 📸 Image & File Handling
   image_picker: ^1.0.7
+  cached_network_image: ^3.2.3
+
+  # 📊 Charts & Diagrams
+  fl_chart: ^0.63.0
 
   # 🎨 Styling, Animations, and UI Kits
   animated_text_kit: ^4.2.2

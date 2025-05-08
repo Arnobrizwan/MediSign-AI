@@ -29,7 +29,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
               Navigator.pop(context);
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (_) => const DashboardPage()),
+                MaterialPageRoute(builder: (_) => const PatientDashboardPage()),
               );
             },
             child: const Text('OK'),
