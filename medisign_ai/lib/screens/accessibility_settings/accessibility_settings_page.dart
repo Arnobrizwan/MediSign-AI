@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AccessibilitySettingsPage extends StatefulWidget {
   const AccessibilitySettingsPage({super.key});
@@ -8,26 +10,95 @@ class AccessibilitySettingsPage extends StatefulWidget {
 }
 
 class _AccessibilitySettingsPageState extends State<AccessibilitySettingsPage> {
-  bool enableBraille = false;
-  bool brailleCompatibility = false;
-  bool trackProficiency = false;
-  bool offlineMode = false;
-  bool allowEmergencyLocation = false;
-  String preferredOutput = 'Text';
-  String selectedDialect = 'Kuala Lumpur dialect';
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  User? user;
 
-  // New settings
-  bool appointmentReminders = true;
-  String preferredPharmacy = 'Pharmacy A';
-  bool shareLabResults = true;
-  bool shareVisitSummaries = false;
-  bool notifLabResults = true;
-  bool notifAppointments = true;
-  bool notifPrescriptions = true;
+  String selectedTheme = 'light';
+  bool isBrailleOn = false;
+  double voiceSpeed = 1.0;
+  double voicePitch = 1.0;
+
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('preferences')
+          .doc('settings')
+          .get();
+
+      final data = doc.data();
+      if (data != null) {
+        setState(() {
+          selectedTheme = data['theme'] ?? 'light';
+          isBrailleOn = data['brailleMode'] ?? false;
+          voiceSpeed = (data['voiceSpeed'] ?? 1.0).toDouble();
+          voicePitch = (data['voicePitch'] ?? 1.0).toDouble();
+          isLoading = false;
+        });
+      } else {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('❌ Error loading preferences: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to load preferences.')),
+      );
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _savePreferences() async {
+    if (user == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user!.uid)
+          .collection('preferences')
+          .doc('settings')
+          .set({
+        'theme': selectedTheme,
+        'brailleMode': isBrailleOn,
+        'voiceSpeed': voiceSpeed,
+        'voicePitch': voicePitch,
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preferences saved successfully!')),
+      );
+    } catch (e) {
+      print('❌ Error saving preferences: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to save preferences.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     Color primaryColor = const Color(0xFFF45B69);
+
+    if (isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -38,9 +109,15 @@ class _AccessibilitySettingsPageState extends State<AccessibilitySettingsPage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Settings',
+          'Accessibility Preferences',
           style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save, color: Colors.black),
+            onPressed: _savePreferences,
+          )
+        ],
       ),
       backgroundColor: Colors.white,
       body: SingleChildScrollView(
@@ -48,188 +125,53 @@ class _AccessibilitySettingsPageState extends State<AccessibilitySettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionHeader('Language Management', primaryColor),
-            ElevatedButton(
-              onPressed: () {},
-              style: _sectionButtonStyle(primaryColor),
-              child: const Text('Add/Remove Sign Languages'),
-            ),
-            const SizedBox(height: 8),
+            _sectionHeader('Theme', primaryColor),
             DropdownButtonFormField<String>(
-              value: selectedDialect,
-              decoration: _dropdownDecoration('Dialect Recognition'),
+              value: selectedTheme,
+              decoration: _dropdownDecoration('Select Theme'),
               items: const [
-                DropdownMenuItem(value: 'Kuala Lumpur dialect', child: Text('Kuala Lumpur dialect')),
-                DropdownMenuItem(value: 'Penang dialect', child: Text('Penang dialect')),
+                DropdownMenuItem(value: 'light', child: Text('Light')),
+                DropdownMenuItem(value: 'dark', child: Text('Dark')),
+                DropdownMenuItem(value: 'high_contrast', child: Text('High Contrast')),
               ],
-              onChanged: (val) => setState(() => selectedDialect = val!),
+              onChanged: (val) => setState(() => selectedTheme = val!),
             ),
 
             const SizedBox(height: 24),
-            _sectionHeader('Communication Preferences', primaryColor),
-            ElevatedButton(
-              onPressed: () {},
-              style: _sectionButtonStyle(primaryColor),
-              child: const Text('Prioritize Communication Methods'),
-            ),
-            Column(
-              children: [
-                RadioListTile(
-                  title: const Text('Text'),
-                  value: 'Text',
-                  groupValue: preferredOutput,
-                  onChanged: (val) => setState(() => preferredOutput = val!),
-                ),
-                RadioListTile(
-                  title: const Text('Speech (with voice, speed, pitch)'),
-                  value: 'Speech',
-                  groupValue: preferredOutput,
-                  onChanged: (val) => setState(() => preferredOutput = val!),
-                ),
-                RadioListTile(
-                  title: const Text('Braille'),
-                  value: 'Braille',
-                  groupValue: preferredOutput,
-                  onChanged: (val) => setState(() => preferredOutput = val!),
-                ),
-              ],
-            ),
-            if (preferredOutput == 'Speech')
-              Column(
-                children: [
-                  const Text('Voice Speed'),
-                  Slider(value: 1.0, onChanged: (val) {}, min: 0.5, max: 2.0, divisions: 3, label: 'Normal'),
-                  const Text('Voice Pitch'),
-                  Slider(value: 1.0, onChanged: (val) {}, min: 0.5, max: 2.0, divisions: 3, label: 'Normal'),
-                ],
-              ),
-
-            const SizedBox(height: 24),
-            _sectionHeader('Appointment Preferences', primaryColor),
-            SwitchListTile(
-              title: const Text('Enable Appointment Reminders'),
-              value: appointmentReminders,
-              onChanged: (val) => setState(() => appointmentReminders = val),
-            ),
-
-            const SizedBox(height: 24),
-            _sectionHeader('Prescription Preferences', primaryColor),
-            DropdownButtonFormField<String>(
-              value: preferredPharmacy,
-              decoration: _dropdownDecoration('Preferred Pharmacy'),
-              items: const [
-                DropdownMenuItem(value: 'Pharmacy A', child: Text('Pharmacy A')),
-                DropdownMenuItem(value: 'Pharmacy B', child: Text('Pharmacy B')),
-                DropdownMenuItem(value: 'Pharmacy C', child: Text('Pharmacy C')),
-              ],
-              onChanged: (val) => setState(() => preferredPharmacy = val!),
-            ),
-
-            const SizedBox(height: 24),
-            _sectionHeader('Medical Record Sharing Consent', primaryColor),
-            SwitchListTile(
-              title: const Text('Share Lab Results with Caregivers'),
-              value: shareLabResults,
-              onChanged: (val) => setState(() => shareLabResults = val),
-            ),
-            SwitchListTile(
-              title: const Text('Share Visit Summaries with Caregivers'),
-              value: shareVisitSummaries,
-              onChanged: (val) => setState(() => shareVisitSummaries = val),
-            ),
-
-            const SizedBox(height: 24),
-            _sectionHeader('Notification Settings', primaryColor),
-            SwitchListTile(
-              title: const Text('New Lab Results'),
-              value: notifLabResults,
-              onChanged: (val) => setState(() => notifLabResults = val),
-            ),
-            SwitchListTile(
-              title: const Text('Upcoming Appointments'),
-              value: notifAppointments,
-              onChanged: (val) => setState(() => notifAppointments = val),
-            ),
-            SwitchListTile(
-              title: const Text('Prescription Refills Ready'),
-              value: notifPrescriptions,
-              onChanged: (val) => setState(() => notifPrescriptions = val),
-            ),
-
-            const SizedBox(height: 24),
-            _sectionHeader('Accessibility Features', primaryColor),
-            ElevatedButton(
-              onPressed: () {},
-              style: _sectionButtonStyle(primaryColor),
-              child: const Text('Theme: Light / Dark / High Contrast'),
-            ),
+            _sectionHeader('Braille Mode', primaryColor),
             SwitchListTile(
               title: const Text('Enable Braille Mode'),
-              value: enableBraille,
-              onChanged: (val) => setState(() => enableBraille = val),
-            ),
-            SwitchListTile(
-              title: const Text('Braille Display Compatibility'),
-              value: brailleCompatibility,
-              onChanged: (val) => setState(() => brailleCompatibility = val),
-            ),
-            SwitchListTile(
-              title: const Text('Track Communication Proficiency'),
-              value: trackProficiency,
-              onChanged: (val) => setState(() => trackProficiency = val),
+              value: isBrailleOn,
+              onChanged: (val) => setState(() => isBrailleOn = val),
             ),
 
             const SizedBox(height: 24),
-            _sectionHeader('Offline & Data', primaryColor),
-            SwitchListTile(
-              title: const Text('Offline Mode'),
-              subtitle: const Text('Download frequently used medical phrases and basic translations'),
-              value: offlineMode,
-              onChanged: (val) => setState(() => offlineMode = val),
+            _sectionHeader('Voice Settings', primaryColor),
+            const Text('Voice Speed'),
+            Slider(
+              value: voiceSpeed,
+              onChanged: (val) => setState(() => voiceSpeed = val),
+              min: 0.5,
+              max: 2.0,
+              divisions: 3,
+              label: voiceSpeed.toStringAsFixed(1),
             ),
-            ElevatedButton(
-              onPressed: () {},
-              style: _sectionButtonStyle(primaryColor),
-              child: const Text('Cache Management'),
-            ),
-
-            const SizedBox(height: 24),
-            _sectionHeader('Emergency & Safety', primaryColor),
-            ElevatedButton(
-              onPressed: () {},
-              style: _sectionButtonStyle(primaryColor),
-              child: const Text('Emergency Communication Button Setup'),
-            ),
-            SwitchListTile(
-              title: const Text('Allow app to access location for emergency services'),
-              value: allowEmergencyLocation,
-              onChanged: (val) => setState(() => allowEmergencyLocation = val),
+            const Text('Voice Pitch'),
+            Slider(
+              value: voicePitch,
+              onChanged: (val) => setState(() => voicePitch = val),
+              min: 0.5,
+              max: 2.0,
+              divisions: 3,
+              label: voicePitch.toStringAsFixed(1),
             ),
 
             const SizedBox(height: 24),
-            _sectionHeader('Phrasebook', primaryColor),
-            ElevatedButton(
-              onPressed: () {},
+            ElevatedButton.icon(
+              onPressed: _savePreferences,
               style: _sectionButtonStyle(primaryColor),
-              child: const Text('Custom Medical Phrasebook Management'),
-            ),
-
-            const SizedBox(height: 24),
-            _sectionHeader('Account', primaryColor),
-            ElevatedButton(
-              onPressed: () {},
-              style: _sectionButtonStyle(primaryColor),
-              child: const Text('Edit Profile'),
-            ),
-            ElevatedButton(
-              onPressed: () {},
-              style: _sectionButtonStyle(primaryColor),
-              child: const Text('Change Password'),
-            ),
-            ElevatedButton(
-              onPressed: () {},
-              style: _sectionButtonStyle(primaryColor),
-              child: const Text('Manage Family/Caregiver Access'),
+              icon: const Icon(Icons.save),
+              label: const Text('Save Preferences'),
             ),
           ],
         ),

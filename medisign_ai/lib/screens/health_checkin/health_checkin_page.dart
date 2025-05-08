@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class HealthCheckinPage extends StatefulWidget {
   const HealthCheckinPage({super.key});
@@ -10,29 +12,39 @@ class HealthCheckinPage extends StatefulWidget {
 class _HealthCheckinPageState extends State<HealthCheckinPage> {
   final TextEditingController inputController = TextEditingController();
   List<Map<String, String>> chatLog = [
-    {'sender': 'AI', 'message': 'Good morning, John! How are you feeling today? (e.g., Pain, Mood, Symptoms)'},
+    {'sender': 'AI', 'message': 'Good morning! How are you feeling today? (e.g., Pain, Mood, Symptoms)'},
   ];
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  void sendMessage(String message) {
+  Future<void> sendMessage(String message) async {
     setState(() {
       chatLog.add({'sender': 'User', 'message': message});
+    });
 
-      // Simulated AI replies with enhanced integration
-      String aiReply;
-      if (message.toLowerCase().contains('book appointment')) {
-        aiReply = 'Sure! I can help book an appointment with Dr. Lim. What date and time would you prefer?';
-      } else if (message.toLowerCase().contains('latest blood test')) {
-        aiReply = 'Fetching your latest blood test results... Found: Normal cholesterol, elevated glucose.';
-      } else if (message.toLowerCase().contains('refill')) {
-        aiReply = 'I\'ve placed a refill request for your heart medication. Your pharmacy will notify you.';
-      } else if (message.toLowerCase().contains('cardiology')) {
-        aiReply = 'To get to the Cardiology department, take Elevator B to the 3rd floor, then follow the blue signs.';
-      } else {
-        aiReply = 'I understand. On a scale of 1-5, how severe is it?';
+    try {
+      User? user = _auth.currentUser;
+      if (user == null) {
+        throw Exception('No authenticated user.');
       }
 
-      chatLog.add({'sender': 'AI', 'message': aiReply});
-    });
+      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('getGeminiWelcomeMessage');
+      final response = await callable.call(<String, dynamic>{
+        'email': user.email,
+        'message': message,
+      });
+
+      final String aiReply = response.data['message'] ?? 'Sorry, I could not understand.';
+
+      setState(() {
+        chatLog.add({'sender': 'AI', 'message': aiReply});
+      });
+    } catch (error) {
+      print('❌ Error calling Cloud Function: $error');
+      setState(() {
+        chatLog.add({'sender': 'AI', 'message': 'Oops! Something went wrong. Please try again later.'});
+      });
+    }
+
     inputController.clear();
   }
 
@@ -105,15 +117,15 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
               _quickReplyButton('No'),
               _quickReplyButton('A little'),
               _quickReplyButton('A lot'),
-              _quickReplyButton('Book appointment with Dr. Lim'),
-              _quickReplyButton('Show latest blood test results'),
+              _quickReplyButton('Book appointment with doctor'),
+              _quickReplyButton('Show latest test results'),
               _quickReplyButton('Request medication refill'),
-              _quickReplyButton('Get directions to Cardiology'),
+              _quickReplyButton('Get directions to cardiology'),
             ],
           ),
           const SizedBox(height: 8),
 
-          // Input Area with Text, Mic, and Sign
+          // Input Area
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Row(
@@ -134,7 +146,7 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
                   child: TextField(
                     controller: inputController,
                     decoration: InputDecoration(
-                      hintText: 'Type your response or command...',
+                      hintText: 'Type your message...',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
