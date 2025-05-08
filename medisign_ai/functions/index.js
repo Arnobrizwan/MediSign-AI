@@ -20,16 +20,15 @@ exports.onNewUser = functions.auth.user().onCreate(async (userRecord) => {
     const apiKey = functions.config().gemini.apikey;
 
     const geminiResponse = await axios.post(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
       {
         contents: [{ parts: [{ text: `Welcome new user ${email}. Generate a friendly onboarding message.` }] }]
-      },
-      {
-        headers: { Authorization: `Bearer ${apiKey}` }
       }
     );
 
-    const onboardingMessage = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Welcome to MediSign AI!';
+    const onboardingMessage =
+      geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      'Welcome to MediSign AI!';
 
     await admin.firestore().collection('users').doc(uid).set({
       email,
@@ -41,7 +40,7 @@ exports.onNewUser = functions.auth.user().onCreate(async (userRecord) => {
     console.info(`✅ Onboarding saved for ${email}`);
     return null;
   } catch (error) {
-    console.error(`❌ Error generating onboarding for ${email}:`, error);
+    console.error(`❌ Error generating onboarding for ${userRecord.email}:`, error.response?.data || error.message);
     return null;
   }
 });
@@ -58,19 +57,19 @@ exports.getGeminiWelcomeMessage = functions.https.onCall(async (data, context) =
     const apiKey = functions.config().gemini.apikey;
 
     const geminiResponse = await axios.post(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent',
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
       {
         contents: [{ parts: [{ text: `Welcome back, ${email}! Generate a cool, fresh welcome message.` }] }]
-      },
-      {
-        headers: { Authorization: `Bearer ${apiKey}` }
       }
     );
 
-    const message = geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Welcome back to MediSign AI!';
+    const message =
+      geminiResponse?.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      'Welcome back to MediSign AI!';
+
     return { message };
   } catch (error) {
-    console.error('❌ Gemini API error:', error);
+    console.error('❌ Gemini API error:', error.response?.data || error.message);
     throw new functions.https.HttpsError('internal', 'Failed to generate AI welcome message.');
   }
 });

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../dashboard/dashboard_page.dart';
 import '../admin_dashboard/admin_dashboard_page.dart';
 import 'registration_page.dart';
@@ -25,6 +26,34 @@ class _LoginPageState extends State<LoginPage> {
   bool signLanguageMode = false;
   bool brailleMode = false;
   bool isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      emailController.text = prefs.getString('saved_email') ?? '';
+      passwordController.text = prefs.getString('saved_password') ?? '';
+      rememberMe = prefs.getBool('remember_me') ?? false;
+    });
+  }
+
+  Future<void> _saveCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (rememberMe) {
+      await prefs.setString('saved_email', emailController.text.trim());
+      await prefs.setString('saved_password', passwordController.text.trim());
+      await prefs.setBool('remember_me', true);
+    } else {
+      await prefs.remove('saved_email');
+      await prefs.remove('saved_password');
+      await prefs.setBool('remember_me', false);
+    }
+  }
 
   void showAccessibilityModal() {
     showModalBottomSheet(
@@ -79,6 +108,7 @@ class _LoginPageState extends State<LoginPage> {
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
+      await _saveCredentials();
       await _routeUserByRole(userCredential.user);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -103,6 +133,7 @@ class _LoginPageState extends State<LoginPage> {
 
       UserCredential userCredential = await _auth.signInWithCredential(credential);
       await _saveUserToFirestore(userCredential.user, 'google');
+      await _saveCredentials();
       await _routeUserByRole(userCredential.user);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -127,6 +158,7 @@ class _LoginPageState extends State<LoginPage> {
 
       UserCredential userCredential = await _auth.signInWithCredential(oauthCredential);
       await _saveUserToFirestore(userCredential.user, 'apple');
+      await _saveCredentials();
       await _routeUserByRole(userCredential.user);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -162,10 +194,7 @@ class _LoginPageState extends State<LoginPage> {
 
     String role = doc.data()?['role'] ?? 'user';
 
-    // 🔥 Fetch live Gemini welcome message
     String welcomeMessage = await _fetchWelcomeMessageFromGemini(user.email ?? '');
-
-    // Show AI welcome message
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(welcomeMessage)),
     );

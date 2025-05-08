@@ -35,6 +35,9 @@ dependencies:
   # 📊 Charts & Diagrams
   fl_chart: ^0.63.0
 
+  # 📦 Local Storage
+  shared_preferences: ^2.2.2
+
   # 🎨 Styling, Animations, and UI Kits
   animated_text_kit: ^4.2.2
   lottie: ^2.7.0

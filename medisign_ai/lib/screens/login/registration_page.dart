@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -20,6 +22,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
   final TextEditingController confirmPasswordController = TextEditingController();
   String? selectedLanguage;
   File? profileImage;
+  Uint8List? webImageBytes;
 
   bool agreedToTerms = false;
   bool showPassword = false;
@@ -46,16 +49,35 @@ class _RegistrationPageState extends State<RegistrationPage> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
-      setState(() {
-        profileImage = File(pickedFile.path);
-      });
+      if (kIsWeb) {
+        final bytes = await pickedFile.readAsBytes();
+        setState(() {
+          webImageBytes = bytes;
+          profileImage = null;
+        });
+      } else {
+        setState(() {
+          profileImage = File(pickedFile.path);
+          webImageBytes = null;
+        });
+      }
     }
   }
 
   Future<String?> uploadProfileImage(String uid) async {
-    if (profileImage == null) return null;
+    if (profileImage == null && webImageBytes == null) return null;
     final ref = _storage.ref().child('profile_pictures/$uid.jpg');
-    await ref.putFile(profileImage!);
+    UploadTask uploadTask;
+
+    if (kIsWeb && webImageBytes != null) {
+      uploadTask = ref.putData(webImageBytes!);
+    } else if (profileImage != null) {
+      uploadTask = ref.putFile(profileImage!);
+    } else {
+      return null;
+    }
+
+    await uploadTask;
     return await ref.getDownloadURL();
   }
 
@@ -74,9 +96,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
       return;
     }
 
-    setState(() {
-      isLoading = true;
-    });
+    setState(() => isLoading = true);
 
     try {
       UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
@@ -115,28 +135,12 @@ class _RegistrationPageState extends State<RegistrationPage> {
         context,
         MaterialPageRoute(builder: (_) => const LoginPage()),
       );
-    } on FirebaseAuthException catch (e) {
-      String message = 'Registration failed.';
-
-      if (e.code == 'email-already-in-use') {
-        message = 'Email already in use.';
-      } else if (e.code == 'weak-password') {
-        message = 'Password is too weak.';
-      } else if (e.code == 'invalid-email') {
-        message = 'Invalid email address.';
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('An error occurred. Please try again.')),
+        SnackBar(content: Text('Registration failed: ${e.toString()}')),
       );
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
   }
 
@@ -160,23 +164,23 @@ class _RegistrationPageState extends State<RegistrationPage> {
           child: Column(
             children: [
               GestureDetector(
-                onTap: pickProfileImage,
+                onTap: agreedToTerms ? pickProfileImage : null,
                 child: CircleAvatar(
                   radius: 50,
-                  backgroundImage: profileImage != null
-                      ? FileImage(profileImage!)
-                      : const AssetImage('assets/images/default_avatar.png') as ImageProvider,
-                  child: profileImage == null
-                      ? const Icon(Icons.camera_alt, size: 32, color: Colors.white)
-                      : null,
+                  backgroundColor: Colors.grey.shade300,
+                  child: ClipOval(
+                    child: (kIsWeb && webImageBytes != null)
+                        ? Image.memory(webImageBytes!, width: 100, height: 100, fit: BoxFit.cover)
+                        : (profileImage != null)
+                            ? Image.file(profileImage!, width: 100, height: 100, fit: BoxFit.cover)
+                            : const Icon(Icons.camera_alt, size: 32, color: Colors.white),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
-              const Text('Nice to see you!',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+              const Text('Nice to see you!', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
-              const Text('Create your account',
-                  style: TextStyle(color: Colors.grey)),
+              const Text('Create your account', style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 32),
               TextField(
                 controller: nameController,
@@ -260,17 +264,13 @@ class _RegistrationPageState extends State<RegistrationPage> {
                   Checkbox(
                     value: agreedToTerms,
                     onChanged: (value) {
-                      setState(() {
-                        agreedToTerms = value ?? false;
-                      });
+                      setState(() => agreedToTerms = value ?? false);
                     },
                   ),
                   const Expanded(
                     child: Text.rich(TextSpan(children: [
                       TextSpan(text: 'I agree with '),
-                      TextSpan(
-                          text: 'Terms & Conditions',
-                          style: TextStyle(color: Colors.blue)),
+                      TextSpan(text: 'Terms & Conditions', style: TextStyle(color: Colors.blue)),
                     ])),
                   ),
                 ],
@@ -285,8 +285,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                         minimumSize: const Size.fromHeight(50),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      child: const Text('Register',
-                          style: TextStyle(color: Colors.white, fontSize: 18)),
+                      child: const Text('Register', style: TextStyle(color: Colors.white, fontSize: 18)),
                     ),
             ],
           ),
