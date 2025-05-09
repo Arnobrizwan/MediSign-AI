@@ -124,6 +124,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
           'preferredLanguage': selectedLanguage ?? 'None',
           'photoUrl': photoURL ?? '',
           'createdAt': Timestamp.now(),
+          'role': 'user',
         });
       }
 

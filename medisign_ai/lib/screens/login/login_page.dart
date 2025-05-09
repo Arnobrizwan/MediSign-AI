@@ -109,12 +109,15 @@ class _LoginPageState extends State<LoginPage> {
         password: passwordController.text.trim(),
       );
       await _saveCredentials();
+      if (!mounted) return;
       await _routeUserByRole(userCredential.user);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Login failed: ${e.toString()}')),
       );
     } finally {
+      if (!mounted) return;
       setState(() => isLoading = false);
     }
   }
@@ -134,12 +137,15 @@ class _LoginPageState extends State<LoginPage> {
       UserCredential userCredential = await _auth.signInWithCredential(credential);
       await _saveUserToFirestore(userCredential.user, 'google');
       await _saveCredentials();
+      if (!mounted) return;
       await _routeUserByRole(userCredential.user);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Google sign-in failed')),
       );
     } finally {
+      if (!mounted) return;
       setState(() => isLoading = false);
     }
   }
@@ -159,12 +165,15 @@ class _LoginPageState extends State<LoginPage> {
       UserCredential userCredential = await _auth.signInWithCredential(oauthCredential);
       await _saveUserToFirestore(userCredential.user, 'apple');
       await _saveCredentials();
+      if (!mounted) return;
       await _routeUserByRole(userCredential.user);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Apple sign-in failed')),
       );
     } finally {
+      if (!mounted) return;
       setState(() => isLoading = false);
     }
   }
@@ -186,19 +195,23 @@ class _LoginPageState extends State<LoginPage> {
 
     final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
     if (!doc.exists) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('User record not found in Firestore.')),
       );
       return;
     }
 
-    String role = doc.data()?['role'] ?? 'user';
+    final data = doc.data();
+    String role = (data != null && data.containsKey('role')) ? data['role'] : 'user';
 
     String welcomeMessage = await _fetchWelcomeMessageFromGemini(user.email ?? '');
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(welcomeMessage)),
     );
 
+    if (!mounted) return;
     if (role == 'admin') {
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()));
     } else {

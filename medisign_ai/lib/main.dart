@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firebase_options.dart';
 
 // Import your pages
 import 'screens/login/login_page.dart';
@@ -12,12 +14,10 @@ import 'screens/conversation_mode/conversation_mode_page.dart';
 import 'screens/accessibility_settings/accessibility_settings_page.dart';
 import 'screens/transcript_history/transcript_history_page.dart';
 import 'screens/tutorial_support/tutorial_support_page.dart';
-// import 'screens/braille_interaction/braille_interaction_page.dart';
 import 'screens/health_checkin/health_checkin_page.dart';
 import 'screens/patient_locator/patient_locator_page.dart';
 import 'screens/telemedicine/telemedicine_page.dart';
 import 'screens/learning_gamified/learning_gamified_page.dart';
-// import 'screens/emotion_mood/emotion_mood_page.dart';
 import 'screens/family_portal/family_portal_page.dart';
 import 'screens/admin_dashboard/admin_dashboard_page.dart';
 import 'screens/admin_dashboard/session_monitoring_page.dart';
@@ -51,7 +51,7 @@ class MediSignApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,
       ),
-      initialRoute: '/login',
+      home: const AuthGate(),
       routes: {
         '/login': (context) => const LoginPage(),
         '/registration': (context) => const RegistrationPage(),
@@ -62,12 +62,10 @@ class MediSignApp extends StatelessWidget {
         '/accessibility_settings': (context) => const AccessibilitySettingsPage(),
         '/transcript_history': (context) => const TranscriptHistoryPage(),
         '/tutorial_support': (context) => const TutorialSupportPage(),
-        // '/braille_interaction': (context) => const BrailleInteractionPage(),
         '/health_checkin': (context) => const HealthCheckinPage(),
         '/patient_locator': (context) => const PatientLocatorPage(),
         '/telemedicine': (context) => const TelemedicinePage(),
         '/learning_gamified': (context) => const LearningGamifiedPage(),
-        // '/emotion_mood': (context) => const EmotionMoodPage(),
         '/family_portal': (context) => const FamilyPortalPage(),
         '/admin_dashboard': (context) => const AdminDashboardPage(),
         '/session_monitoring': (context) => const SessionMonitoringPage(),
@@ -80,6 +78,59 @@ class MediSignApp extends StatelessWidget {
         '/hospital_guide': (context) => const HospitalGuidePage(),
         '/billing': (context) => const BillingPage(),
         '/editProfile': (context) => const EditProfilePage(),
+      },
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasData) {
+          return FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance
+                .collection('users')
+                .doc(snapshot.data!.uid)
+                .get(),
+            builder: (context, userSnapshot) {
+              if (userSnapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
+
+              if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                final docData = userSnapshot.data!.data() as Map<String, dynamic>? ?? {};
+                final role = docData.containsKey('role') ? docData['role'] : 'user';
+
+                print('✅ User authenticated: UID=${snapshot.data!.uid}, Role=$role');
+
+                if (role == 'admin') {
+                  return const AdminDashboardPage();
+                } else {
+                  return const PatientDashboardPage();
+                }
+              } else {
+                print('⚠ Firestore document missing or unreadable for UID=${snapshot.data!.uid}');
+                return const LoginPage();
+              }
+            },
+          );
+        } else {
+          print('ℹ No authenticated user, showing login page.');
+          return const LoginPage();
+        }
       },
     );
   }
