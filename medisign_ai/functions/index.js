@@ -4,6 +4,9 @@ const axios = require('axios');
 
 admin.initializeApp();
 
+const GEMINI_API_KEY = 'AIzaSyDL39pCbA5sdtx1V3S7SCfq2cGMbohIOe8';  // 🔴 Replace with your valid billing-enabled key
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro-latest:generateContent?key=${GEMINI_API_KEY}`;
+
 // Triggered when a new Firebase Auth user is created
 exports.onNewUser = functions.auth.user().onCreate(async (userRecord) => {
   try {
@@ -17,10 +20,8 @@ exports.onNewUser = functions.auth.user().onCreate(async (userRecord) => {
 
     console.info(`⚙️ Processing new user: ${email} (${uid})`);
 
-    const apiKey = functions.config().gemini.apikey;
-
     const geminiResponse = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+      GEMINI_API_URL,
       {
         contents: [{ parts: [{ text: `Welcome new user ${email}. Generate a friendly onboarding message.` }] }]
       }
@@ -31,8 +32,9 @@ exports.onNewUser = functions.auth.user().onCreate(async (userRecord) => {
       'Welcome to MediSign AI!';
 
     await admin.firestore().collection('users').doc(uid).set({
+      uid,
       email,
-      role: 'user', // default role
+      role: 'user',
       onboardingMessage,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
@@ -54,10 +56,8 @@ exports.getGeminiWelcomeMessage = functions.https.onCall(async (data, context) =
   }
 
   try {
-    const apiKey = functions.config().gemini.apikey;
-
     const geminiResponse = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+      GEMINI_API_URL,
       {
         contents: [{ parts: [{ text: `Welcome back, ${email}! Generate a cool, fresh welcome message.` }] }]
       }
