@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +10,9 @@ import 'firebase_options.dart';
 
 import 'providers/theme_provider.dart';
 import 'providers/accessibility_provider.dart';
+
+
+import 'screens/braille_interaction/braille_interaction_page.dart';
 
 import 'screens/splash_screen.dart';
 import 'screens/login/login_page.dart';
@@ -39,13 +41,13 @@ import 'screens/prescription_management/prescriptions_page.dart';
 import 'screens/hospital_guide/hospital_guide_page.dart';
 import 'screens/billing/billing_page.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Web persistence
+  // Keep users signed in on Web
   try {
     await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
   } catch (_) {}
@@ -62,13 +64,13 @@ void main() async {
 }
 
 class MediSignApp extends StatelessWidget {
-  const MediSignApp({super.key});
+  const MediSignApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Consumer2<ThemeProvider, AccessibilityProvider>(
       builder: (context, themeProvider, accessibilityProvider, child) {
-        // Whenever accessibility.theme changes, apply to app theme
+        // When accessibility theme changes, update app theme
         accessibilityProvider.addListener(() {
           themeProvider.setTheme(accessibilityProvider.theme);
         });
@@ -77,14 +79,27 @@ class MediSignApp extends StatelessWidget {
           title: 'MediSign AI',
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData,
+
+          // Apply global text scaling and layer the Braille overlay if active
           builder: (context, child) {
             final scale = accessibilityProvider.fontSize / 16.0;
-            return MediaQuery(
-              data:
-                  MediaQuery.of(context).copyWith(textScaleFactor: scale),
+            final scaled = MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaleFactor: scale),
               child: child!,
             );
+            return Stack(
+              children: [
+                scaled,
+                if (accessibilityProvider.isBrailleOn)
+                  BrailleInteractionOverlay(
+                    onSend: (translatedText) {
+                      // TODO: inject translatedText into the currently focused text field
+                    },
+                  ),
+              ],
+            );
           },
+
           home: const SplashScreenWithAccessibility(),
           routes: {
             '/login': (_) => const LoginPage(),
@@ -119,10 +134,8 @@ class MediSignApp extends StatelessWidget {
   }
 }
 
-/// Splash screen that loads settings, applies the default theme, then routes
 class SplashScreenWithAccessibility extends StatefulWidget {
-  const SplashScreenWithAccessibility({super.key});
-
+  const SplashScreenWithAccessibility({Key? key}) : super(key: key);
   @override
   State<SplashScreenWithAccessibility> createState() =>
       _SplashScreenWithAccessibilityState();
@@ -137,15 +150,13 @@ class _SplashScreenWithAccessibilityState
   }
 
   Future<void> _initializeApp() async {
-    final access = Provider.of<AccessibilityProvider>(context, listen: false);
+    final access =
+        Provider.of<AccessibilityProvider>(context, listen: false);
     final theme = Provider.of<ThemeProvider>(context, listen: false);
 
-    // Load saved settings if user is logged in
     if (FirebaseAuth.instance.currentUser != null) {
       await access.loadSettings();
     }
-
-    // Always apply whatever theme string is current (default is "light")
     theme.setTheme(access.theme);
 
     await Future.delayed(const Duration(seconds: 2));
@@ -157,15 +168,11 @@ class _SplashScreenWithAccessibilityState
   }
 
   @override
-  Widget build(BuildContext context) {
-    return const SplashScreen();
-  }
+  Widget build(BuildContext context) => const SplashScreen();
 }
 
-/// Decides login vs dashboard
 class WebAuthWrapper extends StatelessWidget {
-  const WebAuthWrapper({super.key});
-
+  const WebAuthWrapper({Key? key}) : super(key: key);
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -182,10 +189,8 @@ class WebAuthWrapper extends StatelessWidget {
   }
 }
 
-/// Routes based on Firestore role
 class DashboardRouter extends StatelessWidget {
-  const DashboardRouter({super.key});
-
+  const DashboardRouter({Key? key}) : super(key: key);
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;

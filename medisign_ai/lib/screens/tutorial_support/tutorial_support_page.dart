@@ -1,102 +1,64 @@
-
+// lib/screens/tutorial_support/tutorial_support_page.dart
 
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
-import 'package:chewie/chewie.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-class TutorialSupportPage extends StatefulWidget {
+class TutorialSupportPage extends StatelessWidget {
   const TutorialSupportPage({Key? key}) : super(key: key);
 
-  @override
-  State<TutorialSupportPage> createState() => _TutorialSupportPageState();
-}
+  static const Color primaryColor = Color(0xFFF45B69);
 
-class _TutorialSupportPageState extends State<TutorialSupportPage> {
-  final Color primaryColor = const Color(0xFFF45B69);
-
-  // 1) Carousel
-  late final PageController _pageController;
-  final List<Widget> _slides = [
-    _buildSlide('Welcome', 'Learn how to use MediSign AI.'),
-    _buildSlide('Edit Profile', 'Customize your display name & picture.'),
-    _buildSlide('Conversation',
-        'Communicate with doctors via speech, text, or sign.'),
+  // Data for each section
+  final List<Map<String,String>> _onboardingSteps = const [
+    {
+      'title': 'Welcome',
+      'body': 'Learn how to use MediSign AI to communicate seamlessly with your care team—via speech, text, or sign language.',
+    },
+    {
+      'title': 'Edit Profile',
+      'body': 'Tap on “Edit Profile” in the dashboard to set your display name, upload a photo, and choose your preferred language.',
+    },
+    {
+      'title': 'Appointment Center',
+      'body': 'Open Appointment Center to view, book, or manage your upcoming visits—all in an accessible, easy-to-read list.',
+    },
   ];
-  int _currentSlide = 0;
 
-  // 2) Videos
-  final List<String> _videoUrls = [
-    // Replace these URLs with actual publicly‐hosted MP4s!
-    'https://example.com/sign_language_demo.mp4',
-    'https://example.com/appointment_center_tutorial.mp4',
+  final List<String> _voiceDemos = const [
+    'Sign Language Recognition: Position your hands within the camera frame and use clear gestures.',
+    'Accessible Appointment Center: Navigate appointments with voice prompts and large text.',
+    'Medical Records Hub: Use voice commands to search and filter your records.',
   ];
-  late final List<VideoPlayerController> _videoControllers;
-  late final List<ChewieController> _chewieControllers;
 
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-
-    // initialize video controllers
-    _videoControllers = _videoUrls
-        .map((url) => VideoPlayerController.network(url)
-          ..initialize().then((_) => setState(() {})))
-        .toList();
-
-    _chewieControllers = _videoControllers
-        .map((vc) => ChewieController(
-              videoPlayerController: vc,
-              autoPlay: false,
-              looping: false,
-            ))
-        .toList();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    for (final c in _chewieControllers) c.dispose();
-    for (final v in _videoControllers) v.dispose();
-    super.dispose();
-  }
-
-  static Widget _buildSlide(String title, String desc) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(title,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          Text(desc, textAlign: TextAlign.center),
-        ],
-      ),
-    );
-  }
+  final Map<String,String> _faq = const {
+    'General':
+      'This app helps patients communicate using sign, Braille, and text.',
+    'Sign Language':
+      'Point the camera clearly at your hands and ensure good lighting.',
+    'Braille':
+      'Enable Braille Mode in settings; use compatible hardware if needed.',
+    'Troubleshooting':
+      'If something’s not working, try restarting the app or checking permissions.',
+  };
 
   Future<void> _openBluetoothSettings() async {
-    // iOS scheme
-    const ios = 'app-settings:';
-    if (await canLaunchUrl(Uri.parse(ios))) {
-      await launchUrl(Uri.parse(ios));
-      return;
+    const iosScheme = 'app-settings:';
+    if (await canLaunchUrl(Uri.parse(iosScheme))) {
+      await launchUrl(Uri.parse(iosScheme));
+    } else {
+      // Android fallback
+      await launchUrl(
+        Uri.parse('bluetooth:'),
+        mode: LaunchMode.externalApplication,
+      );
     }
-    // Android fallback
-    await launchUrl(
-      Uri.parse('bluetooth:'),
-      mode: LaunchMode.externalApplication,
-    );
   }
 
-  void _openFeedbackForm() {
+  void _openFeedbackForm(BuildContext context) {
     String feedbackType = 'Bug';
     final descCtrl = TextEditingController();
-
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -145,192 +107,229 @@ class _TutorialSupportPageState extends State<TutorialSupportPage> {
     );
   }
 
+  Widget _buildCard(Widget child) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        title: const Text('Tutorial & Support'),
         backgroundColor: Colors.white,
         elevation: 0,
-        leading:
-            IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: () => Navigator.pop(context)),
-        title: Text('Tutorial & Support',
-            style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        titleTextStyle: const TextStyle(
+          color: primaryColor, fontWeight: FontWeight.bold, fontSize: 20),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: SingleChildScrollView(
+      body: ListView(
+        padding: const EdgeInsets.only(top: 16, bottom: 32),
+        children: [
+          // Step-by-Step Onboarding
+          _buildCard(
+            ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              title: const Text('Step-by-Step Onboarding',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
+              childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              children: _onboardingSteps.map((step) {
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(step['title']!, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  subtitle: Text(step['body']!),
+                );
+              }).toList(),
+            ),
+          ),
+
+          // Voice-Over Demonstrations
+          _buildCard(
+            ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              title: const Text('Voice-Over Demonstrations',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
+              childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              children: _voiceDemos.map((guideline) {
+                return ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.mic, size: 20, color: primaryColor),
+                  title: Text(guideline),
+                );
+              }).toList(),
+            ),
+          ),
+
+          // FAQ
+         _buildCard(
+  ExpansionTile(
+    tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    title: const Text(
+      'FAQ',
+      style: TextStyle(
+        fontWeight: FontWeight.bold,
+        color: primaryColor,
+      ),
+    ),
+    childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    children: _faq.entries.map((entry) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // —— Onboarding carousel —— 
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 250,
-              child: Stack(
-                children: [
-                  PageView.builder(
-                    controller: _pageController,
-                    itemCount: _slides.length,
-                    onPageChanged: (i) => setState(() => _currentSlide = i),
-                    itemBuilder: (_, i) => _slides[i],
-                  ),
-                  Positioned(
-                    left: 8,
-                    top: 100,
-                    child: IconButton(
-                        icon: const Icon(Icons.arrow_back),
-                        onPressed: () {
-                          final prev = _currentSlide - 1;
-                          if (prev >= 0) {
-                            _pageController.animateToPage(prev,
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeIn);
-                          }
-                        }),
-                  ),
-                  Positioned(
-                    right: 8,
-                    top: 100,
-                    child: IconButton(
-                        icon: const Icon(Icons.arrow_forward),
-                        onPressed: () {
-                          final next = _currentSlide + 1;
-                          if (next < _slides.length) {
-                            _pageController.animateToPage(next,
-                                duration: const Duration(milliseconds: 300),
-                                curve: Curves.easeIn);
-                          }
-                        }),
-                  ),
-                ],
+            Text(
+              entry.key,
+              textAlign: TextAlign.left,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 16,
               ),
             ),
-            const SizedBox(height: 24),
-
-            // —— Videos —— 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text('Voice-Over Demonstrations',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
+            const SizedBox(height: 4),
+            Text(
+              entry.value,
+              textAlign: TextAlign.left,
+              style: const TextStyle(fontSize: 14),
             ),
-            const SizedBox(height: 8),
-            for (var i = 0; i < _chewieControllers.length; i++)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16),
-                child: _videoControllers[i].value.isInitialized
-                    ? AspectRatio(
-                        aspectRatio: _videoControllers[i].value.aspectRatio,
-                        child: Chewie(controller: _chewieControllers[i]),
-                      )
-                    : Container(
-                        height: 200,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade200,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Center(child: CircularProgressIndicator()),
-                      ),
-              ),
-            const SizedBox(height: 24),
-
-            // —— FAQ —— 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text('FAQ',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
-            ),
-            const SizedBox(height: 8),
-            ...[
-              ['General', 'This app helps patients communicate using sign, Braille, and text.'],
-              ['Sign Language', 'Point the camera clearly at your hands and ensure good lighting.'],
-              ['Braille', 'Enable Braille Mode in settings; use compatible hardware if needed.'],
-            ].map((qa) => ExpansionTile(
-                  title: Text(qa[0]),
-                  children: [Padding(padding: const EdgeInsets.all(12), child: Text(qa[1]))],
-                )),
-
-            const SizedBox(height: 24),
-
-            // —— Braille Display Pairing —— 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text('Braille Display Pairing',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
-            ),
-            ListTile(
-              leading: Icon(Icons.bluetooth, color: primaryColor),
-              title: const Text('Pair via Bluetooth settings'),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ElevatedButton(
-                onPressed: _openBluetoothSettings,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  minimumSize: const Size.fromHeight(45),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Open Bluetooth Settings'),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // —— Braille On-Screen Guide —— 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text('Using Braille Mode On-Screen',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
-            ),
-            ListTile(
-              leading: Icon(Icons.keyboard, color: primaryColor),
-              title: const Text('Use virtual Braille keyboard with tap gestures.'),
-            ),
-
-            const SizedBox(height: 24),
-
-            // —— Troubleshooting —— 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text('Troubleshooting Guide',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
-            ),
-            ...[
-              'Camera not working → Check permissions.',
-              'Mic access denied → Re-enable in system settings.',
-              'Translation errors → Check language selection.',
-            ].map((step) => ListTile(
-                  leading: Icon(Icons.check_circle_outline, color: primaryColor),
-                  title: Text(step),
-                )),
-
-            const SizedBox(height: 24),
-
-            // —— Contact & Feedback —— 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text('Contact & Feedback',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
-            ),
-            ListTile(
-              leading: Icon(Icons.support_agent, color: primaryColor),
-              title: const Text('Contact Hospital IT Support'),
-              subtitle: const Text('Email: support@hospital.com\nPhone: +60-123-456-789'),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ElevatedButton(
-                onPressed: _openFeedbackForm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  minimumSize: const Size.fromHeight(45),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Send Feedback'),
-              ),
-            ),
-
-            const SizedBox(height: 32),
           ],
         ),
+      );
+    }).toList(),
+  ),
+),
+          // Braille Display Pairing
+          _buildCard(
+            ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              title: const Text('Braille Display Pairing',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
+              childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              children: [
+                const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.bluetooth, color: primaryColor),
+                  title: Text('Ensure your Braille device is powered on.'),
+                ),
+                const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.settings, color: primaryColor),
+                  title: Text('Open your phone’s Bluetooth settings.'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.link, color: primaryColor),
+                  title: const Text('Select your Braille device to pair.'),
+                  trailing: TextButton(
+                    onPressed: _openBluetoothSettings,
+                    child: const Text('Open Settings'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // On-Screen Braille Guide
+          _buildCard(
+            ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              title: const Text('Using Braille Mode On-Screen',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
+              childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              children: const [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.keyboard, color: primaryColor),
+                  title: Text('Tap the virtual 6-dot grid to form characters.'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.accessibility_new, color: primaryColor),
+                  title: Text('Use the “Send” button to commit text.'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.backspace, color: primaryColor),
+                  title: Text('Swipe left to delete a character.'),
+                ),
+              ],
+            ),
+          ),
+
+          // Troubleshooting
+          _buildCard(
+            ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              title: const Text('Troubleshooting Guide',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
+              childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              children: const [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.camera_alt, color: primaryColor),
+                  title: Text('Camera not working → Check permissions.'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.mic_off, color: primaryColor),
+                  title: Text('Mic access denied → Re-enable in system settings.'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.translate, color: primaryColor),
+                  title: Text('Translation errors → Verify target language.'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.refresh, color: primaryColor),
+                  title: Text('App not responding → Restart the app.'),
+                ),
+              ],
+            ),
+          ),
+
+          // Contact & Feedback
+          _buildCard(
+            ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              title: const Text('Contact & Feedback',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
+              childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              children: [
+                const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.support_agent, color: primaryColor),
+                  title: Text('Email: support@hospital.com'),
+                  subtitle: Text('Phone: +60-123-456-789'),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Center(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _openFeedbackForm(context),
+                      icon: const Icon(Icons.feedback),
+                      label: const Text('Send Feedback'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
