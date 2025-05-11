@@ -1,170 +1,298 @@
+// lib/screens/family_portal/family_portal_page.dart
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-class FamilyPortalPage extends StatelessWidget {
-  const FamilyPortalPage({super.key});
+class FamilyPortalPage extends StatefulWidget {
+  const FamilyPortalPage({Key? key}) : super(key: key);
+
+  @override
+  State<FamilyPortalPage> createState() => _FamilyPortalPageState();
+}
+
+class _FamilyPortalPageState extends State<FamilyPortalPage> {
+  String? _patientName;
+  String? _doctorName;
+  bool _loading = true;
+  bool _notificationsEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPatientAndDoctor();
+  }
+
+  Future<void> _loadPatientAndDoctor() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final data = doc.data() ?? {};
+      _patientName = data['name'] as String? ?? 'Patient';
+      _doctorName = data['assignedDoctor'] as String? ?? 'Doctor';
+    } else {
+      _patientName = 'Patient';
+      _doctorName = 'Doctor';
+    }
+    setState(() => _loading = false);
+  }
 
   @override
   Widget build(BuildContext context) {
-    Color primaryColor = const Color(0xFFF45B69);
-
-    String patientName = 'John Doe';
-    String caregiverName = 'Anna Smith';
+    final primary = const Color(0xFFF45B69);
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
+      backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0,
-        title: Text(
-          '$patientName\'s Portal - Welcome $caregiverName',
-          style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 16),
+        elevation: 1,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.of(context).pop(),
         ),
+        title: Text(
+          '$_patientName’s Portal',
+          style: TextStyle(color: primary, fontWeight: FontWeight.w600),
+        ),
+        centerTitle: true,
         actions: [
-          TextButton(
+          IconButton(
+            icon: const Icon(Icons.logout, color: Color(0xFFF45B69)),
             onPressed: () {
-              Navigator.pop(context);
+              FirebaseAuth.instance.signOut();
+              Navigator.of(context).popUntil((r) => r.isFirst);
             },
-            child: const Text('Logout', style: TextStyle(color: Color(0xFFF45B69))),
-          ),
+          )
         ],
       ),
-      backgroundColor: Colors.white,
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         children: [
-          // Patient Health Summary
-          _sectionHeader('Patient Health Summary (Consented)', primaryColor),
-          _infoCard(Icons.favorite, 'Recent AI Check-in: Mild Headache', 'Medication: Paracetamol confirmed taken today.'),
-          _infoCard(Icons.health_and_safety, 'Health Record Access', 'Latest lab results and visit summaries available.'),
-          const SizedBox(height: 16),
-
-          // Upcoming Appointments
-          _sectionHeader('Upcoming Appointments (Consented)', primaryColor),
-          _infoCard(Icons.calendar_today, 'Telemedicine with Dr. Smith', 'Tomorrow at 10:00 AM'),
-          _infoCard(Icons.local_hospital, 'In-person Visit - Cardiology', 'Next Monday at 2:00 PM'),
-          const SizedBox(height: 16),
-
-          // Prescriptions
-          _sectionHeader('Current Prescriptions (Consented)', primaryColor),
-          _infoCard(Icons.medication, 'Heart Medication', 'Refill available'),
-          _infoCard(Icons.medication_liquid, 'Blood Pressure Pills', 'Next refill: 1 week'),
-          const SizedBox(height: 16),
-
-          // Bills & Payments
-          _sectionHeader('Bills & Payments (Consented)', primaryColor),
-          _infoCard(Icons.payment, 'Outstanding Balance', 'RM 200 due by next month'),
-          ElevatedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Opening payment assistance interface...')),
-              );
-            },
-            icon: const Icon(Icons.attach_money),
-            label: const Text('Assist with Payment'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              minimumSize: const Size.fromHeight(50),
+          // Greeting
+          Card(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 28,
+                    backgroundColor: Color(0xFFF45B69),
+                    child: Icon(Icons.person, color: Colors.white, size: 32),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      'Welcome, $_patientName!',
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  )
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
+
+          // Health Summary
+          _buildSectionHeader('Health Summary', primary),
+          Card(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            elevation: 1,
+            child: Column(
+              children: [
+                _buildInfoTile(Icons.favorite, 'Mild headache',
+                    'Paracetamol taken today'),
+                const Divider(height: 1),
+                _buildInfoTile(Icons.health_and_safety, 'Lab Results',
+                    'Latest blood test uploaded'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Upcoming Appointments
+          _buildSectionHeader('Upcoming Appointments', primary),
+          Card(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            elevation: 1,
+            child: Column(
+              children: [
+                _buildInfoTile(Icons.calendar_today,
+                    'Telemedicine with $_doctorName', 'Tomorrow, 10:00 AM'),
+                const Divider(height: 1),
+                _buildInfoTile(Icons.local_hospital, 'Cardiology Visit',
+                    'Next Monday, 2:00 PM'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Prescriptions & Billing
+          Row(
+            children: [
+              Expanded(
+                child: Card(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  elevation: 1,
+                  child: Column(
+                    children: [
+                      _buildInfoTile(Icons.medication, 'Heart Meds',
+                          'Refill available'),
+                      const Divider(height: 1),
+                      _buildInfoTile(Icons.medication_liquid, 'BP Pills',
+                          'Next refill in 1 week'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Card(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  elevation: 1,
+                  child: Column(
+                    children: [
+                      _buildInfoTile(Icons.payment, 'Balance Due',
+                          'RM 200 by month end'),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primary,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8)),
+                            minimumSize: const Size.fromHeight(40),
+                          ),
+                          onPressed: () =>
+                              Navigator.pushNamed(context, '/billing'),
+                          child: const Text('Assist Payment'),
+                        ),
+                      )
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
 
           // Communication Logs
-          _sectionHeader('Recent Communication Logs', primaryColor),
+          _buildSectionHeader('Communication Logs', primary),
           Card(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            elevation: 1,
             child: ListTile(
               leading: const Icon(Icons.chat, color: Color(0xFFF45B69)),
-              title: const Text('Check-in Chat Summary'),
-              subtitle: const Text('Click to view full transcript'),
+              title: const Text('Check-in Chat'),
+              subtitle: const Text('Tap to view transcript'),
               trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () {
+              onTap: () => Navigator.pushNamed(context, '/transcript_history'),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Communication Tools
+          _buildSectionHeader('Communication Tools', primary),
+          Card(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            elevation: 1,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 12),
+              child: Column(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/telemedicine'),
+                    icon: const Icon(Icons.videocam),
+                    label: Text('Live Call $_doctorName'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primary,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton.icon(
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/conversation_mode'),
+                    icon: const Icon(Icons.message),
+                    label: const Text('Text Message'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primary,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8)),
+                      minimumSize: const Size.fromHeight(48),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Notification Settings
+          _buildSectionHeader('Notification Settings', primary),
+          Card(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+            elevation: 1,
+            child: SwitchListTile(
+              title: const Text('Enable Patient Alerts'),
+              value: _notificationsEnabled,
+              activeColor: primary,
+              onChanged: (v) {
+                setState(() => _notificationsEnabled = v);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Opening full transcript...')),
+                  SnackBar(
+                    content: Text(v
+                        ? 'Patient alerts enabled'
+                        : 'Patient alerts disabled'),
+                  ),
                 );
+                // TODO: persist this setting into Firestore or SharedPreferences
               },
             ),
           ),
-          const SizedBox(height: 16),
-
-          // Patient Progress
-          _sectionHeader('Patient Progress', primaryColor),
-          Wrap(
-            spacing: 8,
-            children: [
-              Chip(label: const Text('7-Day Check-in Streak')),
-              Chip(label: const Text('Learned 10 BIM Phrases')),
-            ],
-          ),
-          const SizedBox(height: 24),
-
-          // Communication Tools
-          _sectionHeader('Communication Tools', primaryColor),
-          ElevatedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Opening video message recorder...')),
-              );
-            },
-            icon: const Icon(Icons.videocam),
-            label: const Text('Video Message to John'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              minimumSize: const Size.fromHeight(50),
-            ),
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Starting live call...')),
-              );
-            },
-            icon: const Icon(Icons.call),
-            label: const Text('Live Call John'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              minimumSize: const Size.fromHeight(50),
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Caregiver Settings
-          _sectionHeader('Caregiver Settings', primaryColor),
-          SwitchListTile(
-            title: const Text('Enable Notifications for Patient Alerts'),
-            value: true,
-            activeColor: primaryColor,
-            onChanged: (val) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(val ? 'Notifications enabled' : 'Notifications disabled')),
-              );
-            },
-          ),
+          const SizedBox(height: 30),
         ],
       ),
     );
   }
 
-  Widget _sectionHeader(String title, Color color) {
+  Widget _buildSectionHeader(String text, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(
-        title,
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
-      ),
+      child: Text(text,
+          style: TextStyle(
+              fontSize: 18, fontWeight: FontWeight.bold, color: color)),
     );
   }
 
-  Widget _infoCard(IconData icon, String title, String subtitle) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        leading: Icon(icon, color: const Color(0xFFF45B69)),
-        title: Text(title),
-        subtitle: Text(subtitle),
-      ),
+  Widget _buildInfoTile(IconData icon, String title, String subtitle) {
+    return ListTile(
+      leading: Icon(icon, color: const Color(0xFFF45B69)),
+      title: Text(title,
+          style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: Text(subtitle),
     );
   }
 }

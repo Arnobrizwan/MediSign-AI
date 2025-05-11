@@ -69,7 +69,7 @@ dependencies:
 
   # — YouTube embed (iframe) —
   youtube_player_iframe: ^5.1.3
-
+  pay: ^1.0.10
 dev_dependencies:
   flutter_test:
     sdk: flutter
