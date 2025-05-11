@@ -11,7 +11,6 @@ import 'firebase_options.dart';
 import 'providers/theme_provider.dart';
 import 'providers/accessibility_provider.dart';
 
-
 import 'screens/braille_interaction/braille_interaction_page.dart';
 
 import 'screens/splash_screen.dart';
@@ -55,84 +54,70 @@ Future<void> main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        // 1️⃣ AccessibilityProvider at the top:
         ChangeNotifierProvider(create: (_) => AccessibilityProvider()),
+
+        // 2️⃣ ThemeProvider follows AccessibilityProvider:
+        ChangeNotifierProxyProvider<AccessibilityProvider, ThemeProvider>(
+          create: (_) => ThemeProvider(),
+          update: (_, accessibility, themeProvider) {
+            themeProvider!..setTheme(accessibility.theme);
+            return themeProvider;
+          },
+        ),
       ],
       child: const MediSignApp(),
     ),
   );
 }
-class MediSignApp extends StatefulWidget {
+
+class MediSignApp extends StatelessWidget {
   const MediSignApp({Key? key}) : super(key: key);
 
   @override
-  State<MediSignApp> createState() => _MediSignAppState();
-}
-
-class _MediSignAppState extends State<MediSignApp> {
-  late final AccessibilityProvider _accessibility;
-  late final ThemeProvider _theme;
-
-  @override
-  void initState() {
-    super.initState();
-    // We can safely grab the providers here because in main.dart
-    // they are above us in the tree via MultiProvider.
-    _accessibility = context.read<AccessibilityProvider>();
-    _theme = context.read<ThemeProvider>();
-
-    // Listen once and forward theme changes
-    _accessibility.addListener(() {
-      _theme.setTheme(_accessibility.theme);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Consumer2<ThemeProvider, AccessibilityProvider>(
-      builder: (context, themeProvider, accessibilityProvider, child) {
-        return MaterialApp(
-          title: 'MediSign AI',
-          debugShowCheckedModeBanner: false,
-          theme: themeProvider.themeData,
-          builder: (context, child) {
-            final scale = accessibilityProvider.fontSize / 16.0;
-            return MediaQuery(
-              data: MediaQuery.of(context).copyWith(textScaleFactor: scale),
-              child: child!,
-            );
-          },
-  
+    // Watch for changes:
+    final themeData = context.watch<ThemeProvider>().themeData;
+    final fontScale =
+        context.watch<AccessibilityProvider>().fontSize / 16.0;
 
-          home: const SplashScreenWithAccessibility(),
-          routes: {
-            '/login': (_) => const LoginPage(),
-            '/registration': (_) => const RegistrationPage(),
-            '/forgot_password': (_) => const ForgotPasswordPage(),
-            '/dashboard': (_) => const PatientDashboardPage(),
-            '/admin_dashboard': (_) => const AdminDashboardPage(),
-            '/sign_translate': (_) => const SignTranslatePage(),
-            '/conversation_mode': (_) => const ConversationModePage(),
-            '/accessibility_settings': (_) => const AccessibilitySettingsPage(),
-            '/transcript_history': (_) => const TranscriptHistoryPage(),
-            '/tutorial_support': (_) => const TutorialSupportPage(),
-            '/health_checkin': (_) => const HealthCheckinPage(),
-            '/patient_locator': (_) => const PatientLocatorPage(),
-            '/telemedicine': (_) => const TelemedicinePage(),
-            '/learning_gamified': (_) => const LearningGamifiedPage(),
-            '/family_portal': (_) => const FamilyPortalPage(),
-            '/session_monitoring': (_) => const SessionMonitoringPage(),
-            '/translation_review': (_) => const TranslationReviewPage(),
-            '/admin_manage_content': (_) => const ContentManagementPage(),
-            '/admin_audit_compliance': (_) => const AuditCompliancePage(),
-            '/appointment_center': (_) => const AppointmentCenterPage(),
-            '/medical_records': (_) => const MedicalRecordsPage(),
-            '/prescription_management': (_) => const PrescriptionsPage(),
-            '/hospital_guide': (_) => const HospitalGuidePage(),
-            '/billing': (_) => const BillingPage(),
-            '/editProfile': (_) => const EditProfilePage(),
-          },
+    return MaterialApp(
+      title: 'MediSign AI',
+      debugShowCheckedModeBanner: false,
+      theme: themeData,
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaleFactor: fontScale),
+          child: child!,
         );
+      },
+      home: const SplashScreenWithAccessibility(),
+      routes: {
+        '/login': (_) => const LoginPage(),
+        '/registration': (_) => const RegistrationPage(),
+        '/forgot_password': (_) => const ForgotPasswordPage(),
+        '/dashboard': (_) => const PatientDashboardPage(),
+        '/admin_dashboard': (_) => const AdminDashboardPage(),
+        '/sign_translate': (_) => const SignTranslatePage(),
+        '/conversation_mode': (_) => const ConversationModePage(),
+        '/accessibility_settings': (_) => const AccessibilitySettingsPage(),
+        '/transcript_history': (_) => const TranscriptHistoryPage(),
+        '/tutorial_support': (_) => const TutorialSupportPage(),
+        '/health_checkin': (_) => const HealthCheckinPage(),
+        '/patient_locator': (_) => const PatientLocatorPage(),
+        '/telemedicine': (_) => const TelemedicinePage(),
+        '/learning_gamified': (_) => const LearningGamifiedPage(),
+        '/family_portal': (_) => const FamilyPortalPage(),
+        '/session_monitoring': (_) => const SessionMonitoringPage(),
+        '/translation_review': (_) => const TranslationReviewPage(),
+        '/admin_manage_content': (_) => const ContentManagementPage(),
+        '/admin_audit_compliance': (_) => const AuditCompliancePage(),
+        '/appointment_center': (_) => const AppointmentCenterPage(),
+        '/medical_records': (_) => const MedicalRecordsPage(),
+        '/prescription_management': (_) => const PrescriptionsPage(),
+        '/hospital_guide': (_) => const HospitalGuidePage(),
+        '/billing': (_) => const BillingPage(),
+        '/editProfile': (_) => const EditProfilePage(),
       },
     );
   }
@@ -156,12 +141,12 @@ class _SplashScreenWithAccessibilityState
   Future<void> _initializeApp() async {
     final access =
         Provider.of<AccessibilityProvider>(context, listen: false);
-    final theme = Provider.of<ThemeProvider>(context, listen: false);
 
     if (FirebaseAuth.instance.currentUser != null) {
       await access.loadSettings();
     }
-    theme.setTheme(access.theme);
+
+    // No more manual theme.setTheme(...) call needed!
 
     await Future.delayed(const Duration(seconds: 2));
     if (!mounted) return;
