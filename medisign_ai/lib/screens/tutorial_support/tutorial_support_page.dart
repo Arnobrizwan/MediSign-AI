@@ -161,15 +161,19 @@ class TutorialSupportPage extends StatelessWidget {
               children: _voiceDemos.map((guideline) {
                 return ListTile(
                   dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
                   leading: const Icon(Icons.mic, size: 20, color: primaryColor),
-                  title: Text(guideline),
+                  title: Text(
+                    guideline,
+                    style: const TextStyle(height: 1.3),
+                  ),
                 );
               }).toList(),
             ),
           ),
 
-          // FAQ
-         _buildCard(
+          // FAQ (left-aligned entries)
+_buildCard(
   ExpansionTile(
     tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
     title: const Text(
@@ -179,28 +183,26 @@ class TutorialSupportPage extends StatelessWidget {
         color: primaryColor,
       ),
     ),
-    childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    // remove extra left inset
+    childrenPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
     children: _faq.entries.map((entry) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              entry.key,
-              textAlign: TextAlign.left,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 16,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              entry.value,
-              textAlign: TextAlign.left,
-              style: const TextStyle(fontSize: 14),
-            ),
-          ],
+      return ListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        visualDensity: const VisualDensity(vertical: -4),
+        title: Text(
+          entry.key,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2.0),
+          child: Text(
+            entry.value,
+            style: const TextStyle(fontSize: 14, height: 1.3),
+          ),
         ),
       );
     }).toList(),
@@ -229,7 +231,7 @@ class TutorialSupportPage extends StatelessWidget {
                   leading: const Icon(Icons.link, color: primaryColor),
                   title: const Text('Select your Braille device to pair.'),
                   trailing: TextButton(
-                    onPressed: _openBluetoothSettings,
+                    onPressed: () => _openBluetoothSettings(),
                     child: const Text('Open Settings'),
                   ),
                 ),
