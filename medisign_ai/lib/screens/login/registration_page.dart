@@ -66,19 +66,25 @@ class _RegistrationPageState extends State<RegistrationPage> {
 
   Future<String?> uploadProfileImage(String uid) async {
     if (profileImage == null && webImageBytes == null) return null;
-    final ref = _storage.ref().child('profile_pictures/$uid.jpg');
-    UploadTask uploadTask;
+    
+    try {
+      final ref = _storage.ref().child('profile_pictures/$uid.jpg');
+      UploadTask uploadTask;
 
-    if (kIsWeb && webImageBytes != null) {
-      uploadTask = ref.putData(webImageBytes!);
-    } else if (profileImage != null) {
-      uploadTask = ref.putFile(profileImage!);
-    } else {
+      if (kIsWeb && webImageBytes != null) {
+        uploadTask = ref.putData(webImageBytes!);
+      } else if (profileImage != null) {
+        uploadTask = ref.putFile(profileImage!);
+      } else {
+        return null;
+      }
+
+      await uploadTask;
+      return await ref.getDownloadURL();
+    } catch (e) {
+      print('Error uploading image: $e');
       return null;
     }
-
-    await uploadTask;
-    return await ref.getDownloadURL();
   }
 
   Future<void> handleRegister() async {
@@ -111,17 +117,23 @@ class _RegistrationPageState extends State<RegistrationPage> {
         String patientId = await generatePatientId();
         photoURL = await uploadProfileImage(user.uid);
 
+        // Update Firebase Auth profile
         await user.updateDisplayName(nameController.text.trim());
         if (photoURL != null) {
           await user.updatePhotoURL(photoURL);
         }
 
+        // Save to Firestore with consistent field names
         await _firestore.collection('users').doc(user.uid).set({
           'uid': user.uid,
           'patientId': patientId,
           'name': nameController.text.trim(),
+          'displayName': nameController.text.trim(), // Add this field for consistency
           'email': user.email,
           'preferredLanguage': selectedLanguage ?? 'None',
+          'preferredLanguages': selectedLanguage != null 
+              ? [selectedLanguage!] 
+              : [], // Convert to array for edit profile page
           'photoUrl': photoURL ?? '',
           'createdAt': Timestamp.now(),
           'role': 'user',
@@ -142,6 +154,30 @@ class _RegistrationPageState extends State<RegistrationPage> {
       );
     } finally {
       setState(() => isLoading = false);
+    }
+  }
+
+  Widget _buildProfileAvatar() {
+    if (kIsWeb && webImageBytes != null) {
+      return ClipOval(
+        child: Image.memory(
+          webImageBytes!, 
+          width: 100, 
+          height: 100, 
+          fit: BoxFit.cover,
+        ),
+      );
+    } else if (profileImage != null) {
+      return ClipOval(
+        child: Image.file(
+          profileImage!, 
+          width: 100, 
+          height: 100, 
+          fit: BoxFit.cover,
+        ),
+      );
+    } else {
+      return const Icon(Icons.camera_alt, size: 32, color: Colors.white);
     }
   }
 
@@ -169,13 +205,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 child: CircleAvatar(
                   radius: 50,
                   backgroundColor: Colors.grey.shade300,
-                  child: ClipOval(
-                    child: (kIsWeb && webImageBytes != null)
-                        ? Image.memory(webImageBytes!, width: 100, height: 100, fit: BoxFit.cover)
-                        : (profileImage != null)
-                            ? Image.file(profileImage!, width: 100, height: 100, fit: BoxFit.cover)
-                            : const Icon(Icons.camera_alt, size: 32, color: Colors.white),
-                  ),
+                  child: _buildProfileAvatar(),
                 ),
               ),
               const SizedBox(height: 16),

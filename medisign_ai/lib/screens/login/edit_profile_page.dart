@@ -1,4 +1,8 @@
-import 'dart:io';
+// edit_profile_page.dart
+import 'dart:typed_data';
+import 'dart:async';
+import 'dart:io' show File;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,17 +17,18 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  final _auth      = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance;
+  final _storage   = FirebaseStorage.instance;
 
-  final TextEditingController nameController = TextEditingController();
+  final nameController = TextEditingController();
   List<String> selectedLanguages = [];
-  File? profileImage;
-  bool isLoading = false;
-  String? currentPhotoUrl;
+  Uint8List? webImageBytes;
+  XFile?     pickedFile;
+  bool       isLoading     = false;
+  String?    currentPhotoUrl;
 
-  final List<String> languageOptions = ['BIM', 'BISINDO', 'English', 'Braille'];
+  final languageOptions = ['BIM','BISINDO','English','Braille'];
 
   @override
   void initState() {
@@ -35,149 +40,289 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    final doc =
-        await _firestore.collection('users').doc(user.uid).get();
-
-    setState(() {
-      nameController.text = doc['name'] ?? '';
-      selectedLanguages =
-          List<String>.from(doc['preferredLanguages'] ?? []);
-      currentPhotoUrl = doc['photoUrl'] ?? '';
-    });
+    try {
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      if (!mounted) return;
+      if (doc.exists) {
+        final data = doc.data()!;
+        setState(() {
+          nameController.text =
+            data['displayName'] ?? data['name'] ?? user.displayName ?? '';
+          if (data['preferredLanguages'] != null) {
+            selectedLanguages = List<String>.from(data['preferredLanguages']);
+          }
+          currentPhotoUrl = (data['photoUrl'] ?? user.photoURL)?.trim();
+        });
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        nameController.text = _auth.currentUser?.displayName ?? '';
+        currentPhotoUrl    = _auth.currentUser?.photoURL?.trim();
+      });
+    }
   }
 
   Future<String?> _uploadProfileImage(String uid) async {
-    if (profileImage == null) return currentPhotoUrl;
-    final ref = _storage.ref().child('profile_pictures/$uid.jpg');
-    await ref.putFile(profileImage!);
-    return await ref.getDownloadURL();
+    if (pickedFile == null && webImageBytes == null) {
+      return currentPhotoUrl;
+    }
+
+    try {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final ref = _storage.ref().child('profile_pictures/${uid}_$ts.jpg');
+      final meta = SettableMetadata(
+        contentType: 'image/jpeg',
+        cacheControl: 'max-age=3600',
+        customMetadata: {
+          'userUid': uid,
+          'uploadedAt': ts.toString(),
+        },
+      );
+
+      UploadTask task;
+      if (kIsWeb && webImageBytes != null) {
+        task = ref.putData(webImageBytes!, meta);
+      } else if (pickedFile != null) {
+        task = ref.putFile(File(pickedFile!.path), meta);
+      } else {
+        return currentPhotoUrl;
+      }
+
+      final snap = await task.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw TimeoutException('Upload timed out'),
+      );
+      String url = (await snap.ref.getDownloadURL()).trim();
+
+      // small delay on web so upload fully propagates
+      if (kIsWeb) await Future.delayed(const Duration(seconds: 1));
+      return url;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload image: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return currentPhotoUrl;
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final img = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 800,
+        maxHeight: 800,
+      );
+      if (img == null) return;
+      if (!mounted) return;
+
+      if (kIsWeb) {
+        webImageBytes = await img.readAsBytes();
+        pickedFile    = null;
+      } else {
+        pickedFile    = img;
+        webImageBytes = null;
+      }
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _saveProfile() async {
     final user = _auth.currentUser;
     if (user == null) return;
+    if (!mounted) return;
 
     setState(() => isLoading = true);
-
     try {
       final photoURL = await _uploadProfileImage(user.uid);
-      await user.updateDisplayName(nameController.text.trim());
-      if (photoURL != null) {
-        await user.updatePhotoURL(photoURL);
-      }
-
-      await _firestore.collection('users').doc(user.uid).update({
-        'name': nameController.text.trim(),
+      final data = {
+        'displayName': nameController.text.trim(),
+        'name'       : nameController.text.trim(),
         'preferredLanguages': selectedLanguages,
-        'photoUrl': photoURL,
-      });
+        'updatedAt'  : FieldValue.serverTimestamp(),
+        if (photoURL != null) 'photoUrl': photoURL,
+      };
 
+      await user.updateDisplayName(nameController.text.trim());
+      if (photoURL != null) await user.updatePhotoURL(photoURL);
+      await _firestore.collection('users').doc(user.uid).update(data);
+
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated successfully!')),
+        const SnackBar(
+          content: Text('Profile updated successfully!'),
+          backgroundColor: Colors.green,
+        ),
       );
-
+      await Future.delayed(const Duration(seconds:1));
+      if (!mounted) return;
       Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating profile: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating profile: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final pickedFile =
-        await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        profileImage = File(pickedFile.path);
-      });
+  Widget _buildAvatar() {
+    if (kIsWeb && webImageBytes != null) {
+      return CircleAvatar(radius:50, backgroundImage: MemoryImage(webImageBytes!));
     }
+    if (pickedFile != null) {
+      return CircleAvatar(radius:50, backgroundImage: FileImage(File(pickedFile!.path)));
+    }
+    if ((currentPhotoUrl ?? '').isNotEmpty) {
+      return CircleAvatar(
+        radius:50,
+        backgroundColor:Colors.grey.shade200,
+        child: ClipOval(
+          child: Image.network(
+            currentPhotoUrl!,
+            width:100, height:100, fit:BoxFit.cover,
+            loadingBuilder:(_,child,prog)=> prog==null
+              ? child
+              : Center(child:CircularProgressIndicator(value: prog.expectedTotalBytes!=null
+                  ? prog.cumulativeBytesLoaded/prog.expectedTotalBytes!
+                  : null)),
+            errorBuilder:(_,__,___)=> const Icon(Icons.person,size:50,color:Colors.grey),
+          ),
+        ),
+      );
+    }
+    return const CircleAvatar(
+      radius:50,
+      backgroundColor:Color(0xFFF45B69),
+      child:Icon(Icons.person,size:50,color:Colors.white),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    Color primaryColor = const Color(0xFFF45B69);
+    final primary = const Color(0xFFF45B69);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Profile'),
+        backgroundColor: primary,
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  GestureDetector(
-                    onTap: _pickImage,
-                    child: CircleAvatar(
-                      radius: 50,
-                      backgroundImage: profileImage != null
-                          ? FileImage(profileImage!)
-                          : (currentPhotoUrl != null && currentPhotoUrl!.isNotEmpty
-                              ? NetworkImage(currentPhotoUrl!)
-                              : const AssetImage('assets/images/default_avatar.png'))
-                              as ImageProvider,
-                      child: profileImage == null
-                          ? const Icon(Icons.camera_alt, size: 32, color: Colors.white)
-                          : null,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children:[
+                // Avatar + explicit button
+                _buildAvatar(),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: _pickImage,
+                  icon: const Icon(Icons.camera_alt, color: Color(0xFFF45B69)),
+                  label: const Text('Change Photo'),
+                ),
+
+                const SizedBox(height: 24),
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Display Name',
+                    prefixIcon: const Icon(Icons.person),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: primary, width: 2),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: nameController,
-                    decoration: InputDecoration(
-                      labelText: 'Display Name',
-                      prefixIcon: const Icon(Icons.person),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
-                    ),
+                ),
+
+                const SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: const Text(
+                    'Preferred Languages:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                  const SizedBox(height: 16),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: const Text('Preferred Languages:',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: languageOptions.map((lang) {
+                    final sel = selectedLanguages.contains(lang);
+                    return FilterChip(
+                      label: Text(lang),
+                      selected: sel,
+                      selectedColor: primary.withOpacity(0.3),
+                      checkmarkColor: primary,
+                      onSelected: (v) {
+                        if (!mounted) return;
+                        setState(() {
+                          if (v) selectedLanguages.add(lang);
+                          else selectedLanguages.remove(lang);
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+
+                const SizedBox(height: 40),
+                ElevatedButton(
+                  onPressed: isLoading ? null : _saveProfile,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primary,
+                    minimumSize: const Size.fromHeight(50),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: languageOptions.map((lang) {
-                      final isSelected = selectedLanguages.contains(lang);
-                      return FilterChip(
-                        label: Text(lang),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          setState(() {
-                            if (selected) {
-                              selectedLanguages.add(lang);
-                            } else {
-                              selectedLanguages.remove(lang);
-                            }
-                          });
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _saveProfile,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      minimumSize: const Size.fromHeight(50),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: const Text('Save Changes',
-                        style: TextStyle(color: Colors.white, fontSize: 18)),
-                  ),
-                ],
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Save Changes',
+                          style: TextStyle(color: Colors.white, fontSize: 18),
+                        ),
+                ),
+                const SizedBox(height: 24),
+              ]
+            ),
+          ),
+
+          if (isLoading)
+            Container(
+              color: Colors.black26,
+              child: const Center(
+                child: CircularProgressIndicator(color: Color(0xFFF45B69)),
               ),
             ),
+        ]
+      ),
     );
   }
 }

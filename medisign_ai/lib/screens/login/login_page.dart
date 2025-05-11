@@ -5,10 +5,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../dashboard/dashboard_page.dart';
-import '../admin_dashboard/admin_dashboard_page.dart';
 import 'registration_page.dart';
 import 'forgot_password_page.dart';
+import '../dashboard/dashboard_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -35,11 +34,13 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _loadSavedCredentials() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      emailController.text = prefs.getString('saved_email') ?? '';
-      passwordController.text = prefs.getString('saved_password') ?? '';
-      rememberMe = prefs.getBool('remember_me') ?? false;
-    });
+    if (mounted) {
+      setState(() {
+        emailController.text = prefs.getString('saved_email') ?? '';
+        passwordController.text = prefs.getString('saved_password') ?? '';
+        rememberMe = prefs.getBool('remember_me') ?? false;
+      });
+    }
   }
 
   Future<void> _saveCredentials() async {
@@ -102,31 +103,53 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> handleLogin() async {
+    if (isLoading) return;
+    
     setState(() => isLoading = true);
     try {
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
       );
+      
       await _saveCredentials();
+      
+      // Show welcome message
+      String welcomeMessage = await _fetchWelcomeMessageFromGemini(userCredential.user?.email ?? '');
       if (!mounted) return;
-      await _routeUserByRole(userCredential.user);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(welcomeMessage)),
+      );
+      
+      // Navigate to dashboard
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const PatientDashboardPage()),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Login failed: ${e.toString()}')),
       );
     } finally {
-      if (!mounted) return;
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   Future<void> handleGoogleLogin() async {
+    if (isLoading) return;
+    
     setState(() => isLoading = true);
     try {
-      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-      if (googleUser == null) return;
+      final GoogleSignInAccount? googleUser = await GoogleSignIn(
+        scopes: ['email', 'profile'],
+      ).signIn();
+      
+      if (googleUser == null) {
+        setState(() => isLoading = false);
+        return;
+      }
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       final credential = GoogleAuthProvider.credential(
@@ -137,24 +160,40 @@ class _LoginPageState extends State<LoginPage> {
       UserCredential userCredential = await _auth.signInWithCredential(credential);
       await _saveUserToFirestore(userCredential.user, 'google');
       await _saveCredentials();
+      
+      // Show welcome message
+      String welcomeMessage = await _fetchWelcomeMessageFromGemini(userCredential.user?.email ?? '');
       if (!mounted) return;
-      await _routeUserByRole(userCredential.user);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(welcomeMessage)),
+      );
+      
+      // Navigate to dashboard
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const PatientDashboardPage()),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Google sign-in failed')),
       );
     } finally {
-      if (!mounted) return;
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
   Future<void> handleAppleLogin() async {
+    if (isLoading) return;
+    
     setState(() => isLoading = true);
     try {
       final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
       );
 
       final oauthCredential = OAuthProvider("apple.com").credential(
@@ -165,16 +204,27 @@ class _LoginPageState extends State<LoginPage> {
       UserCredential userCredential = await _auth.signInWithCredential(oauthCredential);
       await _saveUserToFirestore(userCredential.user, 'apple');
       await _saveCredentials();
+      
+      // Show welcome message
+      String welcomeMessage = await _fetchWelcomeMessageFromGemini(userCredential.user?.email ?? '');
       if (!mounted) return;
-      await _routeUserByRole(userCredential.user);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(welcomeMessage)),
+      );
+      
+      // Navigate to dashboard
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const PatientDashboardPage()),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Apple sign-in failed')),
       );
     } finally {
-      if (!mounted) return;
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -190,48 +240,24 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  Future<void> _routeUserByRole(User? user) async {
-    if (user == null) return;
-
-    final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
-    if (!doc.exists) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User record not found in Firestore.')),
-      );
-      return;
-    }
-
-    final data = doc.data();
-    String role = (data != null && data.containsKey('role')) ? data['role'] : 'user';
-
-    String welcomeMessage = await _fetchWelcomeMessageFromGemini(user.email ?? '');
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(welcomeMessage)),
-    );
-
-    if (!mounted) return;
-    if (role == 'admin') {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()));
-    } else {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const PatientDashboardPage()));
-    }
-  }
-
   Future<void> _saveUserToFirestore(User? user, String provider) async {
     if (user == null) return;
-    final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-    final doc = await docRef.get();
-    if (!doc.exists) {
-      await docRef.set({
-        'uid': user.uid,
-        'email': user.email,
-        'displayName': user.displayName ?? '',
-        'provider': provider,
-        'role': 'user',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+    try {
+      final docRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+      final doc = await docRef.get();
+      if (!doc.exists) {
+        await docRef.set({
+          'uid': user.uid,
+          'email': user.email,
+          'displayName': user.displayName ?? '',
+          'name': user.displayName ?? '',
+          'provider': provider,
+          'role': 'user',
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      print('Error saving user to Firestore: $e');
     }
   }
 
@@ -334,7 +360,13 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   child: isLoading
-                      ? const CircularProgressIndicator(color: Colors.white)
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                          ),
+                        )
                       : const Text('Continue',
                           style: TextStyle(color: Colors.white, fontSize: 18)),
                 ),
