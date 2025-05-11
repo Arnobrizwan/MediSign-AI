@@ -1149,6 +1149,15 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
               () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LearningGamifiedPage()))),
           _drawerItem(Icons.local_hospital, 'Hospital Services',
               () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HospitalGuidePage()))),
+                 _drawerItem(
+            Icons.calendar_today,
+            'Appointments',
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AppointmentCenterPage()),
+            ),
+          ),
+
           _drawerItem(Icons.help, 'Tutorial & Support',
               () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TutorialSupportPage()))),
           _drawerItem(Icons.people, 'Family Portal',
