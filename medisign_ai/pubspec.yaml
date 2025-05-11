@@ -22,7 +22,7 @@ dependencies:
   firebase_storage: ^11.7.4
   firebase_analytics: ^10.8.4
   firebase_crashlytics: ^3.5.4
-  cloud_functions: ^4.7.4
+  cloud_functions: ^4.7.6
 
   # 🔐 Sign-In Providers
   google_sign_in: ^6.2.1
@@ -47,6 +47,13 @@ dependencies:
   google_mlkit_translation: ^0.8.0
   # 🌐 HTTP & Networking
   http: ^1.2.1
+
+  # # Camera
+  # camera: ^0.10.0+4
+
+  # # Speech-to-text & TTS
+  # speech_to_text: ^5.5.0
+  # flutter_tts: ^3.6.0
 
 dev_dependencies:
   flutter_test:
