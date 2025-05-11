@@ -45,7 +45,6 @@ dependencies:
   # 🧠 AI & ML Helpers
   tflite_flutter: ^0.10.3
   google_mlkit_translation: ^0.8.0
-
   # 🌐 HTTP & Networking
   http: ^1.2.1
 

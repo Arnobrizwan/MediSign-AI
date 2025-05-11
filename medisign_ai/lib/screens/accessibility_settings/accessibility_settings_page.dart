@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+import '../../providers/accessibility_provider.dart';
+import '../../providers/theme_provider.dart';
 
 class AccessibilitySettingsPage extends StatefulWidget {
   const AccessibilitySettingsPage({super.key});
@@ -10,95 +11,13 @@ class AccessibilitySettingsPage extends StatefulWidget {
 }
 
 class _AccessibilitySettingsPageState extends State<AccessibilitySettingsPage> {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  User? user;
-
-  String selectedTheme = 'light';
-  bool isBrailleOn = false;
-  double voiceSpeed = 1.0;
-  double voicePitch = 1.0;
-
-  bool isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPreferences();
-  }
-
-  Future<void> _loadPreferences() async {
-    user = _auth.currentUser;
-    if (user == null) return;
-
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .collection('preferences')
-          .doc('settings')
-          .get();
-
-      final data = doc.data();
-      if (data != null) {
-        setState(() {
-          selectedTheme = data['theme'] ?? 'light';
-          isBrailleOn = data['brailleMode'] ?? false;
-          voiceSpeed = (data['voiceSpeed'] ?? 1.0).toDouble();
-          voicePitch = (data['voicePitch'] ?? 1.0).toDouble();
-          isLoading = false;
-        });
-      } else {
-        setState(() {
-          isLoading = false;
-        });
-      }
-    } catch (e) {
-      print('❌ Error loading preferences: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to load preferences.')),
-      );
-      setState(() {
-        isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _savePreferences() async {
-    if (user == null) return;
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user!.uid)
-          .collection('preferences')
-          .doc('settings')
-          .set({
-        'theme': selectedTheme,
-        'brailleMode': isBrailleOn,
-        'voiceSpeed': voiceSpeed,
-        'voicePitch': voicePitch,
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Preferences saved successfully!')),
-      );
-    } catch (e) {
-      print('❌ Error saving preferences: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to save preferences.')),
-      );
-    }
-  }
+  bool isSaving = false;
 
   @override
   Widget build(BuildContext context) {
-    Color primaryColor = const Color(0xFFF45B69);
-
-    if (isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
+    final accessibilityProvider = Provider.of<AccessibilityProvider>(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    final primaryColor = const Color(0xFFF45B69);
 
     return Scaffold(
       appBar: AppBar(
@@ -113,65 +32,196 @@ class _AccessibilitySettingsPageState extends State<AccessibilitySettingsPage> {
           style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.save, color: Colors.black),
-            onPressed: _savePreferences,
-          )
+          if (isSaving)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.save, color: Colors.black),
+              onPressed: _saveSettings,
+            )
         ],
       ),
       backgroundColor: Colors.white,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.05),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _sectionHeader('Theme', primaryColor),
             DropdownButtonFormField<String>(
-              value: selectedTheme,
+              value: accessibilityProvider.theme,
               decoration: _dropdownDecoration('Select Theme'),
               items: const [
                 DropdownMenuItem(value: 'light', child: Text('Light')),
                 DropdownMenuItem(value: 'dark', child: Text('Dark')),
                 DropdownMenuItem(value: 'high_contrast', child: Text('High Contrast')),
               ],
-              onChanged: (val) => setState(() => selectedTheme = val!),
+              onChanged: (val) {
+                if (val != null) {
+                  accessibilityProvider.setTheme(val);
+                  themeProvider.setTheme(val);
+                }
+              },
+            ),
+
+            const SizedBox(height: 24),
+            _sectionHeader('Font Size', primaryColor),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Font Size'),
+                    Text('${accessibilityProvider.fontSize.toStringAsFixed(0)}px'),
+                  ],
+                ),
+                Slider(
+                  value: accessibilityProvider.fontSize,
+                  onChanged: (val) => accessibilityProvider.setFontSize(val),
+                  min: 12,
+                  max: 24,
+                  divisions: 12,
+                  label: '${accessibilityProvider.fontSize.toStringAsFixed(0)}px',
+                  activeColor: primaryColor,
+                ),
+              ],
             ),
 
             const SizedBox(height: 24),
             _sectionHeader('Braille Mode', primaryColor),
             SwitchListTile(
               title: const Text('Enable Braille Mode'),
-              value: isBrailleOn,
-              onChanged: (val) => setState(() => isBrailleOn = val),
+              subtitle: const Text('Enables Braille output for screen readers'),
+              value: accessibilityProvider.isBrailleOn,
+              onChanged: accessibilityProvider.setBrailleMode,
+              activeColor: primaryColor,
             ),
 
             const SizedBox(height: 24),
             _sectionHeader('Voice Settings', primaryColor),
-            const Text('Voice Speed'),
-            Slider(
-              value: voiceSpeed,
-              onChanged: (val) => setState(() => voiceSpeed = val),
-              min: 0.5,
-              max: 2.0,
-              divisions: 3,
-              label: voiceSpeed.toStringAsFixed(1),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Voice Speed'),
+                      Text('${accessibilityProvider.voiceSpeed.toStringAsFixed(1)}x'),
+                    ],
+                  ),
+                  Slider(
+                    value: accessibilityProvider.voiceSpeed,
+                    onChanged: accessibilityProvider.setVoiceSpeed,
+                    min: 0.5,
+                    max: 2.0,
+                    divisions: 15,
+                    label: '${accessibilityProvider.voiceSpeed.toStringAsFixed(1)}x',
+                    activeColor: primaryColor,
+                  ),
+                ],
+              ),
             ),
-            const Text('Voice Pitch'),
-            Slider(
-              value: voicePitch,
-              onChanged: (val) => setState(() => voicePitch = val),
-              min: 0.5,
-              max: 2.0,
-              divisions: 3,
-              label: voicePitch.toStringAsFixed(1),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Voice Pitch'),
+                      Text('${accessibilityProvider.voicePitch.toStringAsFixed(1)}x'),
+                    ],
+                  ),
+                  Slider(
+                    value: accessibilityProvider.voicePitch,
+                    onChanged: accessibilityProvider.setVoicePitch,
+                    min: 0.5,
+                    max: 2.0,
+                    divisions: 15,
+                    label: '${accessibilityProvider.voicePitch.toStringAsFixed(1)}x',
+                    activeColor: primaryColor,
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: isSaving ? null : _saveSettings,
+                style: _sectionButtonStyle(primaryColor),
+                icon: isSaving 
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.save),
+                label: Text(
+                  isSaving ? 'Saving...' : 'Save Preferences',
+                ),
+              ),
             ),
 
             const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: _savePreferences,
-              style: _sectionButtonStyle(primaryColor),
-              icon: const Icon(Icons.save),
-              label: const Text('Save Preferences'),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, color: primaryColor, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Accessibility Preview',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: accessibilityProvider.highContrast 
+                            ? Colors.black 
+                            : Colors.grey.shade400,
+                        width: accessibilityProvider.highContrast ? 2 : 1,
+                      ),
+                    ),
+                    child: Text(
+                      'This is how your text will appear with current settings.',
+                      style: accessibilityProvider.getTextStyle(),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -182,7 +232,14 @@ class _AccessibilitySettingsPageState extends State<AccessibilitySettingsPage> {
   Widget _sectionHeader(String title, Color color) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: color,
+        ),
+      ),
     );
   }
 
@@ -190,7 +247,7 @@ class _AccessibilitySettingsPageState extends State<AccessibilitySettingsPage> {
     return ElevatedButton.styleFrom(
       backgroundColor: color,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      minimumSize: const Size.fromHeight(45),
+      minimumSize: const Size.fromHeight(48),
     );
   }
 
@@ -198,8 +255,51 @@ class _AccessibilitySettingsPageState extends State<AccessibilitySettingsPage> {
     return InputDecoration(
       labelText: label,
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFF45B69), width: 2),
+      ),
       filled: true,
       fillColor: Colors.grey.shade100,
     );
+  }
+
+  Future<void> _saveSettings() async {
+    setState(() {
+      isSaving = true;
+    });
+
+    try {
+      final accessibilityProvider = Provider.of<AccessibilityProvider>(context, listen: false);
+      await accessibilityProvider.saveSettings();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Settings saved successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving settings: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSaving = false;
+        });
+      }
+    }
   }
 }
