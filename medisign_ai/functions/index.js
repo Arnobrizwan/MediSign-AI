@@ -13,7 +13,7 @@ admin.initializeApp();
 const translationClient = new TranslationServiceClient();
 
 // —— Gemini API config —— 
-const GEMINI_API_KEY = 'AIzaSyDL39pCbA5sdtx1V3S7SCfq2cGMbohIOe8';  // Replace with your key
+const GEMINI_API_KEY = 'AIzaSyDL39pCbA5sdtx1V3S7SCfq2cGMbohIOe8';
 const GEMINI_API_URL =
   `https://generativelanguage.googleapis.com/v1/models/` +
   `gemini-1.5-pro-latest:generateContent?key=${GEMINI_API_KEY}`;
