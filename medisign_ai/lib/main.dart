@@ -62,43 +62,47 @@ Future<void> main() async {
     ),
   );
 }
-
-class MediSignApp extends StatelessWidget {
+class MediSignApp extends StatefulWidget {
   const MediSignApp({Key? key}) : super(key: key);
+
+  @override
+  State<MediSignApp> createState() => _MediSignAppState();
+}
+
+class _MediSignAppState extends State<MediSignApp> {
+  late final AccessibilityProvider _accessibility;
+  late final ThemeProvider _theme;
+
+  @override
+  void initState() {
+    super.initState();
+    // We can safely grab the providers here because in main.dart
+    // they are above us in the tree via MultiProvider.
+    _accessibility = context.read<AccessibilityProvider>();
+    _theme = context.read<ThemeProvider>();
+
+    // Listen once and forward theme changes
+    _accessibility.addListener(() {
+      _theme.setTheme(_accessibility.theme);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Consumer2<ThemeProvider, AccessibilityProvider>(
       builder: (context, themeProvider, accessibilityProvider, child) {
-        // When accessibility theme changes, update app theme
-        accessibilityProvider.addListener(() {
-          themeProvider.setTheme(accessibilityProvider.theme);
-        });
-
         return MaterialApp(
           title: 'MediSign AI',
           debugShowCheckedModeBanner: false,
           theme: themeProvider.themeData,
-
-          // Apply global text scaling and layer the Braille overlay if active
           builder: (context, child) {
             final scale = accessibilityProvider.fontSize / 16.0;
-            final scaled = MediaQuery(
+            return MediaQuery(
               data: MediaQuery.of(context).copyWith(textScaleFactor: scale),
               child: child!,
             );
-            return Stack(
-              children: [
-                scaled,
-                if (accessibilityProvider.isBrailleOn)
-                  BrailleInteractionOverlay(
-                    onSend: (translatedText) {
-                      // TODO: inject translatedText into the currently focused text field
-                    },
-                  ),
-              ],
-            );
           },
+  
 
           home: const SplashScreenWithAccessibility(),
           routes: {

@@ -788,7 +788,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
+
 import '../../providers/accessibility_provider.dart';
+import '../../providers/theme_provider.dart';
 
 import '../sign_translate/sign_translate_page.dart';
 import '../conversation_mode/conversation_mode_page.dart';
@@ -810,6 +812,7 @@ import '../login/login_page.dart';
 
 class PatientDashboardPage extends StatefulWidget {
   const PatientDashboardPage({Key? key}) : super(key: key);
+
   @override
   State<PatientDashboardPage> createState() => _PatientDashboardPageState();
 }
@@ -817,7 +820,6 @@ class PatientDashboardPage extends StatefulWidget {
 class _PatientDashboardPageState extends State<PatientDashboardPage> {
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
-
   String userDisplayName = '';
   String userEmail = '';
   String userProfileUrl = '';
@@ -827,8 +829,12 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
   void initState() {
     super.initState();
     _loadUserProfile();
+
+    // load accessibility & theme
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<AccessibilityProvider>(context, listen: false).loadSettings();
+      final acc = Provider.of<AccessibilityProvider>(context, listen: false);
+      final theme = Provider.of<ThemeProvider>(context, listen: false);
+      acc.loadSettings().then((_) => theme.setTheme(acc.theme));
     });
   }
 
@@ -846,30 +852,18 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     try {
       final doc = await _firestore.collection('users').doc(user.uid).get();
       if (_isDisposed) return;
-
       setState(() {
         userEmail = user.email ?? '';
-        userProfileUrl = user.photoURL ?? '';
-        if (doc.exists) {
-          final data = doc.data()!;
-          userDisplayName = data['displayName']
-              ?? data['name']
-              ?? user.displayName
-              ?? user.email?.split('@').first
-              ?? 'Patient';
-          if ((data['photoUrl'] ?? '').isNotEmpty) {
-            userProfileUrl = data['photoUrl'];
-          }
-        } else {
-          userDisplayName = user.displayName
-              ?? user.email?.split('@').first
-              ?? 'Patient';
-        }
+        userProfileUrl = doc.data()?['photoUrl'] as String? ?? user.photoURL ?? '';
+        userDisplayName = doc.data()?['displayName'] as String? ??
+            user.displayName ??
+            user.email?.split('@')[0] ??
+            'Patient';
       });
     } catch (_) {
       if (_isDisposed) return;
       setState(() {
-        userDisplayName = user.displayName ?? user.email?.split('@').first ?? 'Patient';
+        userDisplayName = user.displayName ?? user.email?.split('@')[0] ?? 'Patient';
         userEmail = user.email ?? '';
       });
     }
@@ -877,99 +871,65 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
 
   @override
   Widget build(BuildContext context) {
-    final ap = Provider.of<AccessibilityProvider>(context);
-    final primary = const Color(0xFFF45B69);
+    final acc = Provider.of<AccessibilityProvider>(context);
+    final baseFont = acc.fontSize;
+    final primaryColor = const Color(0xFFF45B69);
 
     return Scaffold(
-      drawer: _buildDrawer(ap, primary),
+      drawer: _buildDrawer(),
       appBar: AppBar(
-        title: Text('Dashboard', style: ap.getTextStyle(fontWeight: FontWeight.bold, sizeMultiplier: 1.2)),
-        backgroundColor: primary,
+        title: Text('Dashboard', style: acc.getTextStyle(sizeMultiplier: 1.25)),
+        centerTitle: true,
         actions: [
+          // Settings button
           IconButton(
-            icon: Icon(Icons.settings, size: ap.fontSize * 1.2),
+            icon: const Icon(Icons.settings),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const AccessibilitySettingsPage()),
             ),
           ),
-          IconButton(
-            icon: CircleAvatar(
-              radius: ap.fontSize * 0.9,
-              backgroundColor: Colors.white,
-              backgroundImage: userProfileUrl.isNotEmpty ? NetworkImage(userProfileUrl) : null,
-              child: userProfileUrl.isEmpty
-                  ? Icon(Icons.person, color: primary, size: ap.fontSize * 1.2)
-                  : null,
+          // Small user avatar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const EditProfilePage()),
+              ),
+              child: CircleAvatar(
+                radius: baseFont * 0.9,
+                backgroundColor: Colors.grey.shade200,
+                backgroundImage:
+                    userProfileUrl.isNotEmpty ? NetworkImage(userProfileUrl) : null,
+                child: userProfileUrl.isEmpty
+                    ? Icon(Icons.person, color: primaryColor, size: baseFont)
+                    : null,
+              ),
             ),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const EditProfilePage()),
-            ).then((_) => _loadUserProfile()),
           ),
         ],
       ),
+
       body: RefreshIndicator(
         onRefresh: _loadUserProfile,
         child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // — Progress Tracking —
+              _buildChartCard('Progress Tracking', _buildProgressChart()),
 
-              // ─── Header: Six Quick-Action Cards ─────────────────────────
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _quickCard(ap, Icons.sign_language, 'Translate', () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const SignTranslatePage()));
-                  }),
-                  _quickCard(ap, Icons.chat, 'Chat', () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const ConversationModePage()));
-                  }),
-                  _quickCard(ap, Icons.favorite, 'Check-In', () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const HealthCheckinPage()));
-                  }),
-                  _quickCard(ap, Icons.video_call, 'Telemed', () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const TelemedicinePage()));
-                  }),
-                  _quickCard(ap, Icons.school, 'Learn', () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const LearningGamifiedPage()));
-                  }),
-                  _quickCard(ap, Icons.local_hospital, 'Services', () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const HospitalGuidePage()));
-                  }),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // ─── Progress Tracking ───────────────────────────────────────
-              _sectionCard(
-                ap,
-                primary,
-                'Progress Tracking',
-                _buildProgressChart(ap),
-              ),
               const SizedBox(height: 16),
 
-              // ─── Recent Interactions ─────────────────────────────────────
-              _sectionCard(
-                ap,
-                primary,
-                'Recent Interactions',
-                _buildRecentInteractions(ap),
-              ),
+              // — Recent Interactions —
+              _buildChartCard('Recent Interactions', _buildRecentInteractions()),
+
               const SizedBox(height: 16),
 
-              // ─── Medication Overview ────────────────────────────────────
-              _sectionCard(
-                ap,
-                primary,
-                'Medication Overview',
-                _buildMedicationOverview(ap),
-              ),
+              // — Medication Overview —
+              _buildChartCard('Medication Overview', _buildMedicationOverview()),
 
               const SizedBox(height: 24),
             ],
@@ -979,104 +939,109 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     );
   }
 
-  Widget _quickCard(AccessibilityProvider ap, IconData icon, String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 100,
-        height: 100,
-        decoration: BoxDecoration(
-          color: Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade300),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: ap.fontSize * 1.8, color: Colors.black54),
-            const SizedBox(height: 8),
-            Text(label, textAlign: TextAlign.center, style: ap.getTextStyle(sizeMultiplier: 0.8)),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _buildChartCard(String title, Widget chart) {
+    final acc = Provider.of<AccessibilityProvider>(context);
+    final primaryColor = const Color(0xFFF45B69);
 
-  Widget _sectionCard(AccessibilityProvider ap, Color primary, String title, Widget child) {
     return Card(
       elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: ap.getTextStyle(fontWeight: FontWeight.bold, color: primary)),
+            Text(title,
+                style: acc.getTextStyle(
+                    fontWeight: FontWeight.bold, color: primaryColor)),
             const SizedBox(height: 12),
-            child,
+            chart,
           ],
         ),
       ),
     );
   }
 
-  Widget _buildProgressChart(AccessibilityProvider ap) {
-    Widget bar(String label, int pct, Color c) {
-      return Expanded(
-        child: Column(
-          children: [
-            RotatedBox(
-              quarterTurns: 3,
-              child: LinearProgressIndicator(
-                value: pct / 100,
-                backgroundColor: Colors.grey.shade200,
-                valueColor: AlwaysStoppedAnimation(c),
-                minHeight: 20,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text('$pct%', style: ap.getTextStyle(fontWeight: FontWeight.bold)),
-            Text(label, style: ap.getTextStyle(sizeMultiplier: 0.8)),
-          ],
-        ),
-      );
-    }
-
+  Widget _buildProgressChart() {
     return SizedBox(
-      height: 110,
+      height: 100,
       child: Row(
         children: [
-          bar('Translation', 85, Colors.blue),
-          const SizedBox(width: 12),
-          bar('Sign Language', 70, Colors.green),
-          const SizedBox(width: 12),
-          bar('Practice', 90, Colors.purple),
+          Expanded(child: _buildProgressBar('Translation', 85, Colors.blue)),
+          const SizedBox(width: 8),
+          Expanded(child: _buildProgressBar('Sign Language', 70, Colors.green)),
+          const SizedBox(width: 8),
+          Expanded(child: _buildProgressBar('Practice', 90, Colors.purple)),
         ],
       ),
     );
   }
 
-  Widget _buildRecentInteractions(AccessibilityProvider ap) {
-    final items = [
-      {'time': '10:30 AM', 'type': 'Translation', 'status': 'Completed'},
-      {'time': '2:15 PM', 'type': 'Consultation', 'status': 'Upcoming'},
-      {'time': 'Yesterday', 'type': 'Practice', 'status': 'Completed'},
+  Widget _buildProgressBar(String label, int pct, Color c) {
+    final acc = Provider.of<AccessibilityProvider>(context);
+    return Column(
+      children: [
+        Expanded(
+          child: RotatedBox(
+            quarterTurns: 3,
+            child: LinearProgressIndicator(
+              value: pct / 100,
+              backgroundColor: Colors.grey.shade200,
+              valueColor: AlwaysStoppedAnimation(c),
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text('$pct%', style: acc.getTextStyle(fontWeight: FontWeight.bold)),
+        Text(label, style: acc.getTextStyle(sizeMultiplier: 0.75)),
+      ],
+    );
+  }
+
+  Widget _buildRecentInteractions() {
+    final acc = Provider.of<AccessibilityProvider>(context);
+    final data = [
+      {'time': '10:30 AM', 'type': 'Translation Session', 'status': 'Completed'},
+      {'time': '2:15 PM', 'type': 'Doctor Consultation', 'status': 'Upcoming'},
+      {'time': 'Yesterday', 'type': 'Sign Practice', 'status': 'Completed'},
     ];
 
     return Column(
-      children: items.map((it) {
-        final color = it['status'] == 'Completed' ? Colors.green : Colors.orange;
+      children: data.map((item) {
+        final color = item['status'] == 'Completed'
+            ? Colors.green
+            : item['status'] == 'Upcoming'
+                ? Colors.orange
+                : Colors.grey;
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           child: Row(
             children: [
-              CircleAvatar(radius: 16, backgroundColor: color.withOpacity(0.2), child: Icon(Icons.history, color: color, size: 18)),
+              CircleAvatar(
+                backgroundColor: color.withOpacity(0.2),
+                child: Icon(Icons.history, color: color),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: Text('${it['type']} · ${it['time']}', style: ap.getTextStyle())),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item['type']!, style: acc.getTextStyle()),
+                    const SizedBox(height: 2),
+                    Text(item['time']!,
+                        style: acc.getTextStyle(color: Colors.grey)),
+                  ],
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                child: Text(it['status']!, style: ap.getTextStyle(color: color, sizeMultiplier: 0.8)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child:
+                    Text(item['status']!, style: acc.getTextStyle(color: color)),
               ),
             ],
           ),
@@ -1085,7 +1050,8 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     );
   }
 
-  Widget _buildMedicationOverview(AccessibilityProvider ap) {
+  Widget _buildMedicationOverview() {
+    final acc = Provider.of<AccessibilityProvider>(context);
     final meds = [
       {'name': 'Medication A', 'time': '8:00 AM', 'status': 'Taken'},
       {'name': 'Medication B', 'time': '2:00 PM', 'status': 'Pending'},
@@ -1100,16 +1066,34 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
                 ? Colors.orange
                 : Colors.grey;
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           child: Row(
             children: [
-              CircleAvatar(radius: 16, backgroundColor: color.withOpacity(0.2), child: Icon(Icons.medication, color: color, size: 18)),
+              CircleAvatar(
+                backgroundColor: color.withOpacity(0.2),
+                child: Icon(Icons.medication, color: color),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: Text('${m['name']} · ${m['time']}', style: ap.getTextStyle())),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(m['name']!, style: acc.getTextStyle()),
+                    const SizedBox(height: 2),
+                    Text('Time: ${m['time']}',
+                        style: acc.getTextStyle(color: Colors.grey)),
+                  ],
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: color.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                child: Text(m['status']!, style: ap.getTextStyle(color: color, sizeMultiplier: 0.8)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child:
+                    Text(m['status']!, style: acc.getTextStyle(color: color)),
               ),
             ],
           ),
@@ -1118,61 +1102,71 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     );
   }
 
-  Widget _buildDrawer(AccessibilityProvider ap, Color primary) {
+  Widget _buildDrawer() {
+    final acc = Provider.of<AccessibilityProvider>(context);
+    final primaryColor = const Color(0xFFF45B69);
+
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
           DrawerHeader(
-            decoration: BoxDecoration(color: primary),
+            decoration: BoxDecoration(color: primaryColor),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 CircleAvatar(
-                  radius: ap.fontSize * 1.5,
+                  radius: 32,
                   backgroundColor: Colors.white,
-                  backgroundImage: userProfileUrl.isNotEmpty ? NetworkImage(userProfileUrl) : null,
+                  backgroundImage: userProfileUrl.isNotEmpty
+                      ? NetworkImage(userProfileUrl)
+                      : null,
                   child: userProfileUrl.isEmpty
-                      ? Icon(Icons.person, size: ap.fontSize * 1.5, color: primary)
+                      ? Icon(Icons.person, color: primaryColor)
                       : null,
                 ),
-                const SizedBox(height: 8),
-                Text(userDisplayName, style: ap.getTextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                Text(userEmail, style: ap.getTextStyle(color: Colors.white70, sizeMultiplier: 0.8)),
+                const SizedBox(height: 12),
+                Text(userDisplayName,
+                    style:
+                        acc.getTextStyle(sizeMultiplier: 1.2, color: Colors.white)),
+                Text(userEmail,
+                    style:
+                        acc.getTextStyle(sizeMultiplier: 0.9, color: Colors.white70)),
               ],
             ),
           ),
-          _drawerItem(ap, Icons.sign_language, 'Translate', () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const SignTranslatePage()));
-          }),
-          _drawerItem(ap, Icons.chat, 'Conversation', () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const ConversationModePage()));
-          }),
-          _drawerItem(ap, Icons.favorite, 'Health Check-In', () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const HealthCheckinPage()));
-          }),
-          _drawerItem(ap, Icons.video_call, 'Telemedicine', () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const TelemedicinePage()));
-          }),
-          _drawerItem(ap, Icons.school, 'Learn & Practice', () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const LearningGamifiedPage()));
-          }),
-          _drawerItem(ap, Icons.local_hospital, 'Hospital Services', () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const HospitalGuidePage()));
-          }),
-          _drawerItem(ap, Icons.settings, 'Accessibility Settings', () {
-            Navigator.push(context, MaterialPageRoute(builder: (_) => const AccessibilitySettingsPage()));
-          }),
-          _drawerItem(ap, Icons.logout, 'Logout', _handleLogout),
+          _drawerItem(Icons.translate, 'Translate Sign Language',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SignTranslatePage()))),
+          _drawerItem(Icons.chat, 'Patient-Doctor Conversation',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ConversationModePage()))),
+          _drawerItem(Icons.history, 'Medical History',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MedicalRecordsPage()))),
+          _drawerItem(Icons.favorite, 'AI Health Check-In',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HealthCheckinPage()))),
+          _drawerItem(Icons.video_call, 'Telemedicine',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TelemedicinePage()))),
+          _drawerItem(Icons.school, 'Learn & Practice',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LearningGamifiedPage()))),
+          _drawerItem(Icons.local_hospital, 'Hospital Services',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HospitalGuidePage()))),
+          _drawerItem(Icons.help, 'Tutorial & Support',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TutorialSupportPage()))),
+          _drawerItem(Icons.people, 'Family Portal',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FamilyPortalPage()))),
+          const Divider(),
+          _drawerItem(Icons.settings, 'Accessibility Settings',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AccessibilitySettingsPage()))),
+          _drawerItem(Icons.logout, 'Logout', _handleLogout),
         ],
       ),
     );
   }
 
-  ListTile _drawerItem(AccessibilityProvider ap, IconData icon, String title, VoidCallback onTap) {
+  ListTile _drawerItem(IconData icon, String label, VoidCallback onTap) {
+    final acc = Provider.of<AccessibilityProvider>(context);
     return ListTile(
       leading: Icon(icon),
-      title: Text(title, style: ap.getTextStyle()),
+      title: Text(label, style: acc.getTextStyle()),
       onTap: onTap,
     );
   }
@@ -1182,17 +1176,22 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xFFF45B69))),
     );
     try {
       await _auth.signOut();
       if (!mounted) return;
-      Navigator.pop(context);
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage()));
+      Navigator.pop(context); // close dialog
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Logout error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error signing out: $e'), backgroundColor: Colors.red),
+        );
       }
     }
   }

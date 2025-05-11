@@ -5,17 +5,28 @@ publish_to: 'none' # Prevent accidental publishing
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.7.2
+  sdk: "^3.7.2"
 
 dependencies:
   flutter:
     sdk: flutter
 
-  # 🔑 State Management & Hooks
+  # — Video call UI helper for web (Daily.co) —
+  daily_flutter: ^0.31.0
+
+  # — State management & hooks —
   provider: ^6.1.0
   flutter_hooks: ^0.20.3
 
-  # 🌟 Firebase Integration
+  # — Maps & geolocation —
+  google_maps_flutter: ^2.2.0
+  geolocator: ^9.0.2
+
+  # — WebRTC for mobile/desktop if you ever want native video —
+  flutter_webrtc: ^0.9.25
+  uuid: ^3.0.7
+
+  # — Firebase Integration —
   firebase_core: ^2.25.4
   firebase_auth: ^4.20.0
   cloud_firestore: ^4.17.5
@@ -24,40 +35,40 @@ dependencies:
   firebase_crashlytics: ^3.5.4
   cloud_functions: ^4.1.0
 
-  # 🔐 Sign-In Providers
+  # — Social sign-in —
   google_sign_in: ^6.2.1
   sign_in_with_apple: ^7.0.1
 
-  # 📸 Image & File Handling
+  # — Image & file handling —
   image_picker: ^1.0.7
   cached_network_image: ^3.2.3
 
-  # 📊 Charts & Diagrams
+  # — Charts & diagrams —
   fl_chart: ^0.63.0
 
-  # 📦 Local Storage
+  # — Local storage —
   shared_preferences: ^2.2.2
 
-  # 🎨 Styling, Animations, and UI Kits
+  # — Styling, animations, UI kits —
   animated_text_kit: ^4.2.2
   lottie: ^2.7.0
 
-  # 🧠 AI & ML Helpers
+  # — On-device ML helpers —
   tflite_flutter: ^0.10.3
   google_mlkit_translation: ^0.8.0
-  # 🌐 HTTP & Networking
+
+  # — HTTP & networking (pinned to support youtube_player_iframe) —
   http: ^1.2.1
+
+  # — Video playback —
   video_player: ^2.9.5
   chewie: ^1.11.3
+
+  # — Deep links & external URLs —
   url_launcher: ^6.3.1
+
+  # — YouTube embed (iframe) —
   youtube_player_iframe: ^5.1.3
-
-  # # Camera
-  # camera: ^0.10.0+4
-
-  # # Speech-to-text & TTS
-  # speech_to_text: ^5.5.0
-  # flutter_tts: ^3.6.0
 
 dev_dependencies:
   flutter_test:
@@ -66,8 +77,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-
 
   fonts:
     - family: Poppins
