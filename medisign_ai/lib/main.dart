@@ -40,6 +40,14 @@ import 'screens/prescription_management/prescriptions_page.dart';
 import 'screens/hospital_guide/hospital_guide_page.dart';
 import 'screens/billing/billing_page.dart';
 import 'providers/emotion_mood_detection_manager.dart';
+// ─── doctor dashboards ──────────────────────────────────────────────────
+import 'screens/doctor/doctor_dashboard_page.dart';
+import 'screens/doctor/doctor_appointments_page.dart';
+import 'screens/doctor/doctor_telemedicine_page.dart';
+import 'screens/doctor/doctor_conversation_page.dart';
+import 'screens/doctor/doctor_medical_records_page.dart';
+import 'screens/doctor/doctor_prescriptions_page.dart';
+import 'screens/ambulance/ambulance_dashboard_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -179,6 +187,20 @@ class MediSignApp extends StatelessWidget {
         '/appointment_center': (_) => const AppointmentCenterPage(),
         '/medical_records': (_) => const MedicalRecordsPage(),
         '/prescription_management': (_) => const PrescriptionsPage(),
+        // ─── doctor ─────────────────────────────────────────────────────────
+  '/doctor/dashboard':      (_) => const DoctorDashboardPage(),
+  '/doctor/appointments':   (_) => const DoctorAppointmentsPage(),
+  '/doctor/telemedicine':   (_) => const DoctorTelemedicinePage(),
+  '/doctor/medical_records':(_) => const DoctorMedicalRecordsPage(),
+  '/doctor/prescriptions':  (_) => const DoctorPrescriptionsPage(),
+  // for conversation we need to pass the doctor’s name as an argument:
+  '/doctor/conversation': (ctx) {
+    final doctorName = ModalRoute.of(ctx)!.settings.arguments as String;
+    return DoctorConversationPage(doctorName: doctorName);
+  },
+
+  // ─── ambulance ───────────────────────────────────────────────────────
+  '/ambulance_dashboard': (_) => const AmbulanceDashboardPage(),
         '/hospital_guide': (_) => const HospitalGuidePage(),
         '/billing': (ctx) {
           // Grab the current user's ID (or displayName) however you like:
@@ -251,6 +273,7 @@ class WebAuthWrapper extends StatelessWidget {
 
 class DashboardRouter extends StatelessWidget {
   const DashboardRouter({Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -269,12 +292,22 @@ class DashboardRouter extends StatelessWidget {
           );
         }
         if (snap.hasError || !snap.hasData || !snap.data!.exists) {
+          // fallback to patient if something’s weird
           return const PatientDashboardPage();
         }
         final data = snap.data!.data() as Map<String, dynamic>;
-        return data['role'] == 'admin'
-            ? const AdminDashboardPage()
-            : const PatientDashboardPage();
+        final role = data['role'] as String? ?? '';
+
+        switch (role) {
+          case 'admin':
+            return const AdminDashboardPage();
+          case 'doctor':
+            return const DoctorDashboardPage();
+          case 'ambulance':
+            return const AmbulanceDashboardPage();
+          default:
+            return const PatientDashboardPage();
+        }
       },
     );
   }
