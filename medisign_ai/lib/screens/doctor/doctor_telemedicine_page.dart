@@ -1,15 +1,14 @@
 // lib/screens/telemedicine/doctor_telemedicine_page.dart
-
 import 'dart:async';
 import 'dart:convert';
-import 'dart:html' as html;         // for web-only iframe
-import 'dart:ui' as ui;             // for platform view registry
-
+import 'dart:html' as html; // for web-only iframe
+import 'dart:ui' as ui; // for platform view registry
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 class DoctorTelemedicinePage extends StatefulWidget {
   const DoctorTelemedicinePage({Key? key}) : super(key: key);
@@ -20,7 +19,7 @@ class DoctorTelemedicinePage extends StatefulWidget {
 
 class _DoctorTelemedicinePageState extends State<DoctorTelemedicinePage> {
   bool _inCall = false;
-  final String _roomName = 'consult';  
+  final String _roomName = 'consult';
   final String _apiKey = '9ae30efd1d8b91afe901d72da2142f53fad4a767105ae9c02014544c34ec3637';
   late final String _iframeUrl;
   bool _isProvisioning = true;
@@ -35,7 +34,48 @@ class _DoctorTelemedicinePageState extends State<DoctorTelemedicinePage> {
     super.initState();
     _iframeUrl = Uri.https('msai.daily.co', '/$_roomName', {'t': _apiKey}).toString();
     _provisionRoom();
+    
+    // Use original load, but populate with hardcoded data initially
+    _initHardcodedData();
     _loadAppointments();
+  }
+
+  void _initHardcodedData() {
+    final now = DateTime.now();
+    
+    // Add hardcoded data (won't override Firebase data when it loads)
+    _todayAppointments = [
+      {
+        'patientName': 'Sarah Johnson',
+        'time': DateTime(now.year, now.month, now.day, 10, 15),
+        'appointmentId': 'appt1',
+      },
+      {
+        'patientName': 'Michael Brown',
+        'time': DateTime(now.year, now.month, now.day, 14, 30),
+        'appointmentId': 'appt2',
+      },
+      {
+        'patientName': 'Emily Davis',
+        'time': DateTime(now.year, now.month, now.day, 16, 0),
+        'appointmentId': 'appt3',
+      },
+    ];
+    
+    _previousSessions = [
+      {
+        'patientName': 'Jennifer Taylor',
+        'endedAt': DateTime(now.year, now.month, now.day-1, 11, 0),
+      },
+      {
+        'patientName': 'David Miller',
+        'endedAt': DateTime(now.year, now.month, now.day-2, 15, 30),
+      },
+      {
+        'patientName': 'Robert Wilson',
+        'endedAt': DateTime(now.year, now.month, now.day-3, 9, 45),
+      },
+    ];
   }
 
   Future<void> _provisionRoom() async {
@@ -81,43 +121,52 @@ class _DoctorTelemedicinePageState extends State<DoctorTelemedicinePage> {
     final today = DateTime.now();
     final startOfDay = DateTime(today.year, today.month, today.day);
     final endOfDay = startOfDay.add(const Duration(days: 1));
-
-    // Upcoming today's appointments
-    final snap = await FirebaseFirestore.instance
+    
+    try {
+      // Upcoming today's appointments
+      final snap = await FirebaseFirestore.instance
         .collection('appointments')
         .where('doctorId', isEqualTo: doc.uid)
         .where('appointmentDate', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
         .where('appointmentDate', isLessThan: Timestamp.fromDate(endOfDay))
         .orderBy('appointmentDate')
         .get();
-
-    _todayAppointments = snap.docs.map((d) {
-      final data = d.data();
-      return {
-        'patientName': data['patientName'] ?? 'Patient',
-        'time': (data['appointmentDate'] as Timestamp).toDate(),
-        'appointmentId': d.id,
-      };
-    }).toList();
-
-    // Load last 5 sessions
-    final prevSnap = await FirebaseFirestore.instance
+      
+      if (snap.docs.isNotEmpty) {
+        _todayAppointments = snap.docs.map((d) {
+          final data = d.data();
+          return {
+            'patientName': data['patientName'] ?? 'Patient',
+            'time': (data['appointmentDate'] as Timestamp).toDate(),
+            'appointmentId': d.id,
+          };
+        }).toList();
+      }
+      
+      // Load last 5 sessions
+      final prevSnap = await FirebaseFirestore.instance
         .collection('conversations')
         .where('doctorUid', isEqualTo: doc.uid)
         .where('status', isEqualTo: 'closed_by_doctor')
         .orderBy('endedAt', descending: true)
         .limit(5)
         .get();
-
-    _previousSessions = prevSnap.docs.map((d) {
-      final data = d.data();
-      return {
-        'patientName': data['patientName'] ?? 'Patient',
-        'endedAt': (data['endedAt'] as Timestamp).toDate(),
-      };
-    }).toList();
-
-    setState(() {});
+      
+      if (prevSnap.docs.isNotEmpty) {
+        _previousSessions = prevSnap.docs.map((d) {
+          final data = d.data();
+          return {
+            'patientName': data['patientName'] ?? 'Patient',
+            'endedAt': (data['endedAt'] as Timestamp).toDate(),
+          };
+        }).toList();
+      }
+      
+      setState(() {});
+    } catch (e) {
+      // Keep hardcoded data if Firebase fails
+      print('Error loading appointments: $e');
+    }
   }
 
   void _toggleCall() {
@@ -127,28 +176,29 @@ class _DoctorTelemedicinePageState extends State<DoctorTelemedicinePage> {
   @override
   Widget build(BuildContext context) {
     final primaryColor = const Color(0xFFF45B69);
-
+    
     if (_isProvisioning) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    
     if (_error != null) {
       return Scaffold(
         appBar: AppBar(
           title: const Text('Telemedicine'),
-          backgroundColor: Colors.white,
-          elevation: 1,
-          leading: BackButton(color: primaryColor),
+          backgroundColor: primaryColor,
+          elevation: 0,
+          leading: BackButton(color: Colors.white),
         ),
         body: Center(child: Text('Error: $_error', style: const TextStyle(color: Colors.red))),
       );
     }
-
+    
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 1,
+        backgroundColor: primaryColor,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
             if (_inCall) _toggleCall();
             else Navigator.pop(context);
@@ -156,16 +206,16 @@ class _DoctorTelemedicinePageState extends State<DoctorTelemedicinePage> {
         ),
         title: Text(
           _inCall ? 'In Call ($_roomName)' : 'Telemedicine Sessions',
-          style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: _inCall
-            ? [
-                TextButton(
-                  onPressed: _toggleCall,
-                  child: const Text('End Call', style: TextStyle(color: Color(0xFFF45B69))),
-                )
-              ]
-            : null,
+          ? [
+              TextButton(
+                onPressed: _toggleCall,
+                child: const Text('End Call', style: TextStyle(color: Colors.white)),
+              )
+            ]
+          : null,
       ),
       body: _inCall ? _buildCallView() : _buildDashboard(primaryColor),
     );
@@ -174,48 +224,112 @@ class _DoctorTelemedicinePageState extends State<DoctorTelemedicinePage> {
   Widget _buildDashboard(Color primary) {
     return ListView(padding: const EdgeInsets.all(16), children: [
       // Today's Appointments
-      const Text('Today\'s Appointments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      const Text('Today\'s Appointments', 
+        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
+      
       if (_todayAppointments.isEmpty)
         const Text('No appointments for today.')
       else
         ..._todayAppointments.map((a) {
           final time = a['time'] as DateTime;
-          final timeStr = '${time.hour.toString().padLeft(2,'0')}:${time.minute.toString().padLeft(2,'0')}';
+          final timeStr = DateFormat('h:mm a').format(time);
+          
           return Card(
+            margin: const EdgeInsets.only(bottom: 16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: ListTile(
-              leading: const Icon(Icons.person),
-              title: Text(a['patientName']),
-              subtitle: Text(timeStr),
-              trailing: ElevatedButton(
-                onPressed: _toggleCall,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Start'),
+            elevation: 1,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            a['patientName'],
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.access_time, size: 16, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text(
+                                timeStr,
+                                style: const TextStyle(color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      ElevatedButton(
+                        onPressed: _toggleCall,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16, 
+                            vertical: 8,
+                          ),
+                        ),
+                        child: const Text('Start'),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           );
         }),
+      
       const SizedBox(height: 24),
-
+      
       // Previous Sessions
-      const Text('Recent Sessions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      const Text('Recent Sessions', 
+        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
+      
       if (_previousSessions.isEmpty)
         const Text('No recent sessions.')
       else
         ..._previousSessions.map((s) {
           final dt = s['endedAt'] as DateTime;
-          final dateStr = '${dt.month}/${dt.day}/${dt.year} ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
-          return ListTile(
-            leading: const Icon(Icons.history),
-            title: Text(s['patientName']),
-            subtitle: Text(dateStr),
-            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Review session with ${s['patientName']}')),
+          final dateStr = DateFormat('MMM d, h:mm a').format(dt);
+          
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(color: Colors.grey.shade200),
+            ),
+            child: ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16, 
+                vertical: 8,
+              ),
+              leading: CircleAvatar(
+                backgroundColor: primary.withOpacity(0.1),
+                child: Text(
+                  s['patientName'].substring(0, 1),
+                  style: TextStyle(color: primary),
+                ),
+              ),
+              title: Text(s['patientName']),
+              subtitle: Text(dateStr),
+              onTap: () => ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Review session with ${s['patientName']}')),
+              ),
             ),
           );
         }),

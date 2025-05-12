@@ -276,38 +276,53 @@ class DashboardRouter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const LoginPage();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return const LoginPage();
 
     return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get()
-          .timeout(const Duration(seconds: 10)),
+      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
       builder: (ctx, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        if (snap.hasError || !snap.hasData || !snap.data!.exists) {
-          // fallback to patient if something’s weird
-          return const PatientDashboardPage();
-        }
-        final data = snap.data!.data() as Map<String, dynamic>;
-        final role = data['role'] as String? ?? '';
 
-        switch (role) {
-          case 'admin':
-            return const AdminDashboardPage();
-          case 'doctor':
-            return const DoctorDashboardPage();
-          case 'ambulance':
-            return const AmbulanceDashboardPage();
-          default:
-            return const PatientDashboardPage();
+        // If we found a users/{uid} doc, try its role
+        if (snap.hasData && snap.data!.exists) {
+          final rawRole = (snap.data!.data() as Map<String, dynamic>)['role'] as String? ?? '';
+          print('🎯 rawRole from Firestore = "$rawRole"');
+          final role = rawRole.trim().toLowerCase();
+
+          switch (role) {
+            case 'admin':
+              return const AdminDashboardPage();
+            case 'doctor':
+              return const DoctorDashboardPage();
+            case 'ambulance':
+              return const AmbulanceDashboardPage();
+            default:
+              return const PatientDashboardPage();
+          }
         }
+
+        // Otherwise, maybe this user is stored under ambulanceStaff
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance.collection('ambulanceStaff').doc(uid).get(),
+          builder: (ctx2, snap2) {
+            if (snap2.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snap2.hasData && snap2.data!.exists) {
+              // Found them as ambulance staff
+              return const AmbulanceDashboardPage();
+            }
+            // fallback to patient
+            return const PatientDashboardPage();
+          },
+        );
       },
     );
   }
