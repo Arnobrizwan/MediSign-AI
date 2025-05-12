@@ -370,18 +370,23 @@ class _AppointmentCenterPageState extends State<AppointmentCenterPage>
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton(
-                  onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => const BillingPage())),
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(color: _primaryColor),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Pay Bill'),
-                ),
+  onPressed: () {
+    final uid = _auth.currentUser?.uid ?? '';
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BillingPage(patientId: uid),
+      ),
+    );
+  },
+  style: OutlinedButton.styleFrom(
+    side: BorderSide(color: _primaryColor),
+    padding: const EdgeInsets.symmetric(vertical: 16),
+    shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12)),
+  ),
+  child: const Text('Pay Bill'),
+),
               ],
             ),
           ),

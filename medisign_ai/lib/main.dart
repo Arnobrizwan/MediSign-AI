@@ -116,7 +116,11 @@ class MediSignApp extends StatelessWidget {
         '/medical_records': (_) => const MedicalRecordsPage(),
         '/prescription_management': (_) => const PrescriptionsPage(),
         '/hospital_guide': (_) => const HospitalGuidePage(),
-        '/billing': (_) => const BillingPage(),
+        '/billing': (ctx) {
+    // Grab the current user’s ID (or displayName) however you like:
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    return BillingPage(patientId: uid);
+  },
         '/editProfile': (_) => const EditProfilePage(),
       },
     );

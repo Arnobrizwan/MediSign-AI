@@ -1160,9 +1160,13 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
               MaterialPageRoute(builder: (_) => const AppointmentCenterPage()),
             ),
           ),
-           _drawerItem(Icons.payment, 'Billing',
-    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BillingPage())),
-  ),
+           _drawerItem(Icons.payment, 'Billing', () {
+  final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+  Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => BillingPage(patientId: uid)),
+  );
+}),
 
           _drawerItem(Icons.help, 'Tutorial & Support',
               () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TutorialSupportPage()))),
