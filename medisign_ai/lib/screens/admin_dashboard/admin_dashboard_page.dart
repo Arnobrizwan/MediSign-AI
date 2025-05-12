@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AdminDashboardPage extends StatelessWidget {
   const AdminDashboardPage({Key? key}) : super(key: key);
@@ -226,13 +227,27 @@ _DrawerItem(
               const Spacer(),
               const Divider(color: Colors.white24),
               _DrawerItem(
-                icon: Icons.logout,
-                label: 'Logout',
-                onTap: () {
-                  // TODO: sign out logic
-                  Navigator.pop(context);
-                },
-              ),
+  icon: Icons.logout,
+  label: 'Logout',
+  onTap: () async {
+    // Close the drawer first
+    Navigator.pop(context);
+    
+    // Sign out logic (if you're using Firebase Auth)
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      print('Error signing out: $e');
+    }
+    
+    // Navigate to login page and remove all previous routes
+    Navigator.pushNamedAndRemoveUntil(
+      context, 
+      '/login', 
+      (route) => false,  // This will remove all previous routes
+    );
+  },
+),
               const SizedBox(height: 16),
             ],
           ),
