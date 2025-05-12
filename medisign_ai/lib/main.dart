@@ -11,7 +11,7 @@ import 'firebase_options.dart';
 import 'providers/theme_provider.dart';
 import 'providers/accessibility_provider.dart';
 
-import 'screens/braille_interaction/braille_interaction_page.dart';
+//import 'screens/braille_interaction/braille_interaction_page.dart'as braille;
 
 import 'screens/splash_screen.dart';
 import 'screens/login/login_page.dart';
@@ -39,6 +39,7 @@ import 'screens/medical_records/medical_records_page.dart';
 import 'screens/prescription_management/prescriptions_page.dart';
 import 'screens/hospital_guide/hospital_guide_page.dart';
 import 'screens/billing/billing_page.dart';
+import 'providers/emotion_mood_detection_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +51,10 @@ Future<void> main() async {
   try {
     await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
   } catch (_) {}
+
+  // Initialize emotion detection manager
+  final emotionManager = EmotionMoodDetectionManager();
+  await emotionManager.initialize();
 
   runApp(
     MultiProvider(
@@ -69,6 +74,64 @@ Future<void> main() async {
       child: const MediSignApp(),
     ),
   );
+}
+
+// Custom Navigator observer to adapt emotion detection based on current page
+class EmotionAwareNavigatorObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    _updateEmotionDetection(route);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    if (newRoute != null) {
+      _updateEmotionDetection(newRoute);
+    }
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    if (previousRoute != null) {
+      _updateEmotionDetection(previousRoute);
+    }
+  }
+
+  // Helper to determine if we should use camera detection based on route
+  void _updateEmotionDetection(Route<dynamic> route) {
+    final routeName = route.settings.name;
+    final context = navigator?.context;
+    if (context == null) return;
+
+    // List of camera-active routes that should use enhanced monitoring
+    final cameraActiveRoutes = [
+      '/sign_translate',
+      '/conversation_mode',
+      '/telemedicine',
+    ];
+
+    // List of routes that might benefit from text analysis
+    final textAnalysisRoutes = [
+      '/health_checkin',
+    ];
+
+    final emotionManager = EmotionMoodDetectionManager();
+    
+    // If route uses camera or needs text analysis
+    if (cameraActiveRoutes.contains(routeName)) {
+      // Start full monitoring with camera
+      emotionManager.startMonitoring(context);
+    } else if (textAnalysisRoutes.contains(routeName)) {
+      // Keep monitoring active but optimize for text input
+      emotionManager.startMonitoring(context, reducedFrequency: true);
+    } else {
+      // For other routes, we can still keep basic monitoring
+      emotionManager.startMonitoring(context, reducedFrequency: true);
+    }
+  }
 }
 
 class MediSignApp extends StatelessWidget {
@@ -123,6 +186,10 @@ class MediSignApp extends StatelessWidget {
           return BillingPage(patientId: uid);
         },
       },
+      navigatorObservers: [
+        // Add custom navigator observer for emotion detection
+        EmotionAwareNavigatorObserver(),
+      ],
     );
   }
 }

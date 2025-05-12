@@ -1,5 +1,3 @@
-// lib/screens/braille_interaction/braille_interaction_page.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';        // HapticFeedback
 import 'package:provider/provider.dart';

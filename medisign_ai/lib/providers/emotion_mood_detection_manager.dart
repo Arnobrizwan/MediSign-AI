@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'package:url_launcher/url_launcher.dart';
 
-// Main overlay widget that shows up when distress is detected
+// Service class for the overlay that appears when emotion is detected
 class EmotionMoodOverlay extends StatelessWidget {
   final String detectedMood;
   final VoidCallback onShowCalming;
@@ -118,7 +118,8 @@ class EmotionMoodOverlay extends StatelessWidget {
         break;
       case 'distressed':
       case 'overwhelmed':
-        iconData = Icons.sentiment_extremely_dissatisfied;
+        // Fixed: replaced non-existent icon with valid ones
+        iconData = Icons.warning_amber;
         break;
       default:
         iconData = Icons.face;
@@ -178,16 +179,23 @@ class EmotionMoodDetectionManager {
   String get helplineNumber => _helplineNumber;
   String get caregiverContact => _caregiverContact;
   
-  // Start monitoring for emotions in camera sessions
-  void startMonitoring(BuildContext context) {
+  // Start monitoring for emotions across the app
+  void startMonitoring(BuildContext context, {bool reducedFrequency = false}) {
     if (!_isEnabled) return;
     
-    // Simulating periodic emotion analysis (in a real app, this would be tied to ML processing)
+    // Cancel existing timer if any
     _analysisTimer?.cancel();
-    _analysisTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    
+    // Set monitoring frequency based on the page type
+    final frequency = reducedFrequency ? const Duration(minutes: 2) : const Duration(seconds: 30);
+    
+    // Simulating periodic emotion analysis (in a real app, this would be tied to ML processing)
+    _analysisTimer = Timer.periodic(frequency, (timer) {
       // This is a mock detection - in a real app, this would be ML-based analysis
-      final random = DateTime.now().millisecond % 10;
-      if (random < 2) { // 20% chance of detecting distress for demo purposes
+      final random = DateTime.now().millisecond % 20; // 5% chance on regular pages, higher on camera pages
+      final threshold = reducedFrequency ? 1 : 3; // Lower threshold (more detections) for camera pages
+      
+      if (random < threshold) {
         final moods = ['sad', 'anxious', 'distressed', 'frustrated'];
         final detectedMood = moods[DateTime.now().second % moods.length];
         _showEmotionOverlay(context, detectedMood);
