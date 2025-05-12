@@ -96,8 +96,9 @@ class MediSignApp extends StatelessWidget {
         '/login': (_) => const LoginPage(),
         '/registration': (_) => const RegistrationPage(),
         '/forgot_password': (_) => const ForgotPasswordPage(),
-//'/dashboard': (_) => const PatientDashboardPage(),
-       // '/admin_dashboard': (_) => const AdminDashboardPage(),
+        '/editProfile': (_) => const EditProfilePage(),
+        '/dashboard': (_) => const PatientDashboardPage(),
+        '/admin_dashboard': (_) => const AdminDashboardPage(),
         '/sign_translate': (_) => const SignTranslatePage(),
         '/conversation_mode': (_) => const ConversationModePage(),
         '/accessibility_settings': (_) => const AccessibilitySettingsPage(),
@@ -117,11 +118,10 @@ class MediSignApp extends StatelessWidget {
         '/prescription_management': (_) => const PrescriptionsPage(),
         '/hospital_guide': (_) => const HospitalGuidePage(),
         '/billing': (ctx) {
-    // Grab the current user’s ID (or displayName) however you like:
-    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
-    return BillingPage(patientId: uid);
-  },
-        '/editProfile': (_) => const EditProfilePage(),
+          // Grab the current user's ID (or displayName) however you like:
+          final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+          return BillingPage(patientId: uid);
+        },
       },
     );
   }
