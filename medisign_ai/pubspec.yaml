@@ -86,3 +86,6 @@ flutter:
           weight: 700
         - asset: assets/fonts/Poppins-Italic.ttf
           style: italic
+
+  assets:
+       - assets/gpay_service.json

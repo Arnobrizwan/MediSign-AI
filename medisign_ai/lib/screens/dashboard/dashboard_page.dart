@@ -1149,6 +1149,9 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
               () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LearningGamifiedPage()))),
           _drawerItem(Icons.local_hospital, 'Hospital Services',
               () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HospitalGuidePage()))),
+               _drawerItem(Icons.local_pharmacy, 'Prescriptions',
+             () => Navigator.push(context,
+                 MaterialPageRoute(builder: (_) => const PrescriptionsPage()))),
                  _drawerItem(
             Icons.calendar_today,
             'Appointments',
@@ -1157,6 +1160,9 @@ class _PatientDashboardPageState extends State<PatientDashboardPage> {
               MaterialPageRoute(builder: (_) => const AppointmentCenterPage()),
             ),
           ),
+           _drawerItem(Icons.payment, 'Billing',
+    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BillingPage())),
+  ),
 
           _drawerItem(Icons.help, 'Tutorial & Support',
               () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TutorialSupportPage()))),

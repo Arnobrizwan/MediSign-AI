@@ -13,6 +13,18 @@
   <!-- Daily.co Web SDK -->
   <script src="https://unpkg.com/@daily-co/daily-js"></script>
 
+  <!-- Google Pay JS -->
+  <script async
+    src="https://pay.google.com/gp/p/js/pay.js"
+    onload="onGooglePayLoaded()">
+  </script>
+  <script>
+    function onGooglePayLoaded() {
+      // Just a hook so your Flutter app (or JS interop) knows Google Pay is ready.
+      console.log('Google Pay JS loaded');
+    }
+  </script>
+
   <!-- Flutter bootstrap -->
   <script src="flutter_bootstrap.js" defer></script>
 </head>
