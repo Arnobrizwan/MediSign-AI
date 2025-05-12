@@ -180,7 +180,7 @@ class _FamilyPortalPageState extends State<FamilyPortalPage> {
                           ),
                           onPressed: () =>
                               Navigator.pushNamed(context, '/billing'),
-                          child: const Text('Assist Payment'),
+                          child: const Text('View Billing'),
                         ),
                       )
                     ],
