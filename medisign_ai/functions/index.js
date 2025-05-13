@@ -1,24 +1,21 @@
 // functions/index.js
 
-// Import the v1 entry-point so auth.user and https.onCall still work
 const functions = require('firebase-functions/v1');
 const admin     = require('firebase-admin');
 const axios     = require('axios');
 const { TranslationServiceClient } = require('@google-cloud/translate').v3;
 
-// Initialize the Admin SDK
+// — initialize —
 admin.initializeApp();
 
-// —— Cloud Translate client —— 
-const translationClient = new TranslationServiceClient();
-
-// —— Gemini API config —— 
+// —–– CONFIG —––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
 const GEMINI_API_KEY = 'AIzaSyDL39pCbA5sdtx1V3S7SCfq2cGMbohIOe8';
-const GEMINI_API_URL =
-  `https://generativelanguage.googleapis.com/v1/models/` +
-  `gemini-1.5-pro-latest:generateContent?key=${GEMINI_API_KEY}`;
 
-// Simple fallback templates
+// Updated to use the current Gemini API endpoint
+const GEMINI_ENDPOINT = 
+  `https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+
+// simple fallback for welcomes
 function getRandomFallbackMessage(email) {
   const user = email.split('@')[0];
   const msgs = [
@@ -31,9 +28,7 @@ function getRandomFallbackMessage(email) {
   return msgs[Math.floor(Math.random() * msgs.length)];
 }
 
-/**
- * 1) Auth trigger: when a new user signs up
- */
+// —–– 1) Auth trigger: new user —––––––––––––––––––––––––––––––––––––––
 exports.onNewUser = functions.auth.user().onCreate(async (userRecord) => {
   const { uid, email } = userRecord;
   if (!uid || !email) {
@@ -43,23 +38,29 @@ exports.onNewUser = functions.auth.user().onCreate(async (userRecord) => {
 
   let onboardingMessage = getRandomFallbackMessage(email);
 
-  // Try Gemini for a dynamic message
   try {
-    const res = await axios.post(
-      GEMINI_API_URL,
-      {
-        contents: [{
-          parts: [{
-            text: `Welcome new user ${email}. Generate a friendly onboarding message for a healthcare communication app.`
-          }]
-        }]
-      },
-      { timeout: 5000 }
-    );
-    const part = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (part) onboardingMessage = part;
+    // Updated request format for Gemini API
+    const res = await axios.post(GEMINI_ENDPOINT, {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: `Welcome new user ${email}. Generate a friendly onboarding message.` }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        candidateCount: 1
+      }
+    }, { timeout: 20000 });
+
+    console.log('✅ Gemini API response:', res.status);
+    
+    // Updated response parsing
+    const candidate = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (candidate) onboardingMessage = candidate;
+
   } catch (err) {
-    console.warn('⚠️ Gemini API fallback:', err.message);
+    console.warn('⚠️ Gemini onboarding fallback:', err.response?.status, err.response?.data || err.message);
   }
 
   await admin.firestore().collection('users').doc(uid).set({
@@ -74,65 +75,109 @@ exports.onNewUser = functions.auth.user().onCreate(async (userRecord) => {
   return null;
 });
 
-/**
- * 2) Callable: personalized welcome on login
- */
-exports.getGeminiWelcomeMessage = functions.https.onCall(async (data, context) => {
+// —–– 2) Callable: welcome back —––––––––––––––––––––––––––––––––––––––
+exports.getGeminiWelcomeMessage = functions.https.onCall(async (data) => {
   const email = data.email;
-  if (!email) {
-    throw new functions.https.HttpsError('invalid-argument', 'Email is required.');
-  }
+  if (!email) throw new functions.https.HttpsError('invalid-argument', 'Email is required.');
 
   let message = getRandomFallbackMessage(email);
 
-  // Try Gemini for personalized welcome
   try {
-    const res = await axios.post(
-      GEMINI_API_URL,
-      {
-        contents: [{
-          parts: [{
-            text: `Welcome back, ${email}! Generate a personalized, encouraging welcome message for a healthcare communication app user.`
-          }]
-        }]
-      },
-      { timeout: 5000 }
-    );
-    const part = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (part) message = part;
+    // Updated request format for Gemini API
+    const res = await axios.post(GEMINI_ENDPOINT, {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: `Welcome back, ${email}! Generate a personalized welcome message.` }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        candidateCount: 1
+      }
+    }, { timeout: 20000 });
+
+    // Updated response parsing
+    const candidate = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (candidate) message = candidate;
+
   } catch (err) {
-    console.warn('⚠️ Gemini welcome fallback:', err.message);
+    console.warn('⚠️ Gemini welcome fallback:', err.response?.status, err.response?.data || err.message);
   }
 
   return { message };
 });
 
-/**
- * 3) Callable: translateText via Cloud Translate API
- */
-exports.translateText = functions.https.onCall(async (data, context) => {
-  const text       = data.text;
+// —–– 3) Callable: translate text —––––––––––––––––––––––––––––––––––––
+const translationClient = new TranslationServiceClient();
+exports.translateText = functions.https.onCall(async (data) => {
+  const text = data.text;
   const targetLang = data.targetLang || 'en';
-  if (!text) {
-    throw new functions.https.HttpsError('invalid-argument', 'No text provided.');
-  }
+  if (!text) throw new functions.https.HttpsError('invalid-argument', 'No text provided.');
 
   const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-  const location  = 'global';
-
   const request = {
-    parent: `projects/${projectId}/locations/${location}`,
+    parent: `projects/${projectId}/locations/global`,
     contents: [text],
     mimeType: 'text/plain',
     targetLanguageCode: targetLang,
   };
 
+  const [response] = await translationClient.translateText(request);
+  return { translatedText: response.translations?.[0]?.translatedText || '' };
+});
+
+// —–– 4) Callable: chat via Gemini proxy —––––––––––––––––––––––––––––––
+exports.chatWithGemini = functions.https.onCall(async (data) => {
+  const userInput     = data.userInput;
+  const systemPrompt  = data.systemPrompt;
+  const temperature   = data.temperature   ?? 0.4;
+  const candidateCount= data.candidateCount ?? 1;
+
+  if (typeof userInput !== 'string' || typeof systemPrompt !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument',
+      'userInput and systemPrompt must be strings');
+  }
+
+  // Updated payload format for current Gemini API
+  const payload = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { text: systemPrompt },
+          { text: userInput }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature,
+      candidateCount
+    }
+  };
+
+  console.log('🔄 Sending request to Gemini API...');
+  
   try {
-    const [response] = await translationClient.translateText(request);
-    const translated = response.translations?.[0]?.translatedText || '';
-    return { translatedText: translated };
+    const res = await axios.post(GEMINI_ENDPOINT, payload, {
+      timeout: 20000,
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    console.log('✅ Gemini API response status:', res.status);
+    
+    // Updated response parsing
+    const candidate = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!candidate) {
+      console.error('❌ Gemini returned no candidates:', res.data);
+      throw new Error('No candidate in Gemini response');
+    }
+    
+    console.log('✅ Gemini response received successfully');
+    return { reply: candidate };
+
   } catch (err) {
-    console.error('❌ Translate API error:', err);
-    throw new functions.https.HttpsError('internal', 'Translation failed');
+    console.error('❌ Gemini API error:', err.response?.status, err.response?.data || err.message);
+    throw new functions.https.HttpsError('internal', 'Failed to fetch from Gemini');
   }
 });

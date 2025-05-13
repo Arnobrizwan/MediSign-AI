@@ -15,9 +15,11 @@
   "dependencies": {
     "@google-cloud/translate": "^9.0.1",
     "axios": "^1.9.0",
+    "express": "^5.1.0",
     "firebase-admin": "^13.3.0",
     "firebase-functions": "^6.3.2",
-    "google-auth-library": "^9.0.0"
+    "google-auth-library": "^9.0.0",
+    "send": "^1.2.0"
   },
   "devDependencies": {
     "eslint": "^8.15.0",

@@ -5,7 +5,13 @@
   <meta charset="UTF-8">
   <title>medisign_ai</title>
 
-  <!-- Google Maps + Places (no defer, one-line URL) -->
+  <!-- Expose Gemini API Key to Flutter via a global JS var -->
+  <script>
+    // WARNING: embedding API keys in client code is not secure for production!
+    window.GEMINI_API_KEY = 'AIzaSyAYJNTXBx2ji-eIN-uvkLempxytZd8tEcg';
+  </script>
+
+  <!-- Google Maps + Places -->
   <script 
     src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBsvzVLoa2VJg458tYlD16fyyH-W5mCfss&libraries=places">
   </script>
@@ -20,7 +26,6 @@
   </script>
   <script>
     function onGooglePayLoaded() {
-      // Just a hook so your Flutter app (or JS interop) knows Google Pay is ready.
       console.log('Google Pay JS loaded');
     }
   </script>

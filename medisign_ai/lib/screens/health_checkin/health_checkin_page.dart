@@ -1,107 +1,82 @@
+// lib/screens/health_checkin/health_checkin_page.dart
+
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
+import '../../providers/gemini_chat_client.dart';  // <-- updated path
 
 class HealthCheckinPage extends StatefulWidget {
   const HealthCheckinPage({super.key});
-
   @override
-  State<HealthCheckinPage> createState() => _HealthCheckinPageState();
+  _HealthCheckinPageState createState() => _HealthCheckinPageState();
 }
 
 class _HealthCheckinPageState extends State<HealthCheckinPage> {
-  final TextEditingController inputController = TextEditingController();
-  List<Map<String, String>> chatLog = [
-    {'sender': 'AI', 'message': 'Good morning! How are you feeling today? (e.g., Pain, Mood, Symptoms)'},
+  final GeminiChatClient _chat = GeminiChatClient();
+  final TextEditingController _ctr = TextEditingController();
+
+  final List<Map<String, String>> _log = [
+    {
+      'sender': 'AI',
+      'message':
+          '👋 Hi there! Describe any health concern—symptoms, conditions, or questions—and I’ll guide you.'
+    }
   ];
-  final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  Future<void> sendMessage(String message) async {
-    setState(() {
-      chatLog.add({'sender': 'User', 'message': message});
-    });
+  Future<void> _send(String txt) async {
+    // 1) Append the user’s message
+    setState(() => _log.add({'sender': 'User', 'message': txt}));
 
+    // 2) Call the AI, catching & logging any errors
     try {
-      User? user = _auth.currentUser;
-      if (user == null) {
-        throw Exception('No authenticated user.');
-      }
+      final reply = await _chat.send(txt);
+      setState(() => _log.add({'sender': 'AI', 'message': reply}));
+    } catch (e, st) {
+      // Print the full error & stacktrace to console
+      print('❌ Gemini error: $e\n$st');
 
-      final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('getGeminiWelcomeMessage');
-      final response = await callable.call(<String, dynamic>{
-        'email': user.email,
-        'message': message,
-      });
-
-      final String aiReply = response.data['message'] ?? 'Sorry, I could not understand.';
-
-      setState(() {
-        chatLog.add({'sender': 'AI', 'message': aiReply});
-      });
-    } catch (error) {
-      print('❌ Error calling Cloud Function: $error');
-      setState(() {
-        chatLog.add({'sender': 'AI', 'message': 'Oops! Something went wrong. Please try again later.'});
-      });
+      // Show the actual exception message in the chat
+      setState(() => _log.add({
+            'sender': 'AI',
+            'message': '⚠️ Error: ${e.toString()}'
+          }));
     }
 
-    inputController.clear();
-  }
-
-  void endChat() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Summary generated for caregivers/doctors.')),
-    );
-    Navigator.pop(context);
+    // 3) Clear the text field
+    _ctr.clear();
   }
 
   @override
-  Widget build(BuildContext context) {
-    Color primaryColor = const Color(0xFFF45B69);
+  Widget build(BuildContext ctx) {
+    const primary = Color(0xFFF45B69);
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'AI Health Check-In',
-          style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          TextButton(
-            onPressed: endChat,
-            child: const Text('End Chat', style: TextStyle(color: Color(0xFFF45B69))),
-          ),
-        ],
+        title: const Text('AI Health Check-In'),
+        backgroundColor: primary,
       ),
-      backgroundColor: Colors.white,
       body: Column(
         children: [
+          // Chat history
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: chatLog.length,
-              itemBuilder: (context, index) {
-                var entry = chatLog[index];
-                bool isUser = entry['sender'] == 'User';
+              padding: const EdgeInsets.all(12),
+              itemCount: _log.length,
+              itemBuilder: (_, i) {
+                final entry = _log[i];
+                final isUser = entry['sender'] == 'User';
                 return Align(
-                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  alignment:
+                      isUser ? Alignment.centerRight : Alignment.centerLeft,
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isUser ? primaryColor : Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(12),
+                      color: isUser ? primary : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      entry['message'] ?? '',
+                      entry['message']!,
                       style: TextStyle(
-                        color: isUser ? Colors.white : Colors.black87,
-                      ),
+                          color: isUser ? Colors.white : Colors.black87),
                     ),
                   ),
                 );
@@ -109,63 +84,40 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
             ),
           ),
 
-          // Quick Reply Buttons
-          Wrap(
-            spacing: 8,
-            children: [
-              _quickReplyButton('Yes'),
-              _quickReplyButton('No'),
-              _quickReplyButton('A little'),
-              _quickReplyButton('A lot'),
-              _quickReplyButton('Book appointment with doctor'),
-              _quickReplyButton('Show latest test results'),
-              _quickReplyButton('Request medication refill'),
-              _quickReplyButton('Get directions to cardiology'),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // Input Area
+          // Input row: voice / braille / sign / text
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.all(8.0),
             child: Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.mic, color: Color(0xFFF45B69)),
-                  onPressed: () {
-                    sendMessage('Voice input: I have a headache.');
-                  },
+                  icon: const Icon(Icons.mic, color: primary),
+                  onPressed: () =>
+                      _send('Voice input: <transcribe via STT here>'),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.camera_alt, color: Color(0xFFF45B69)),
-                  onPressed: () {
-                    sendMessage('Sign input: I have a headache.');
-                  },
+                  icon: const Icon(Icons.accessible, color: primary),
+                  onPressed: () =>
+                      _send('Braille input: <translate braille here>'),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.camera_alt, color: primary),
+                  onPressed: () => _send('Sign input: <transcribe sign here>'),
                 ),
                 Expanded(
                   child: TextField(
-                    controller: inputController,
-                    decoration: InputDecoration(
-                      hintText: 'Type your message...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey.shade100,
+                    controller: _ctr,
+                    decoration: const InputDecoration(
+                      hintText: 'Type your message…',
+                      border: OutlineInputBorder(),
                     ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: primary),
                   onPressed: () {
-                    if (inputController.text.isNotEmpty) {
-                      sendMessage(inputController.text);
-                    }
+                    if (_ctr.text.isNotEmpty) _send(_ctr.text);
                   },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
                   child: const Icon(Icons.send, color: Colors.white),
                 ),
               ],
@@ -173,16 +125,6 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _quickReplyButton(String label) {
-    return ActionChip(
-      label: Text(label),
-      onPressed: () {
-        sendMessage(label);
-      },
-      backgroundColor: Colors.grey.shade200,
     );
   }
 }
