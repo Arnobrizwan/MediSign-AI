@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Sign-language project cleanup
+medisign_ai/data/raw/
+medisign_ai/data/*.npy
+!medisign_ai/data/metadata.csv
+!medisign_ai/data/classes.npy
+
+models/*.h5
+!models/final_model.tflite
