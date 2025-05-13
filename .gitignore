@@ -6,7 +6,36 @@
 *.swp
 .buildlog/
 .history
+# Jupyter checkpoints
+.ipynb_checkpoints/
 
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Virtual-env / env files
+.env
+venv/
+env/
+
+# Large raw landmark dumps (you’ll keep only the metadata & small mapping files)
+data/raw/
+*.npy
+!data/metadata.csv       # keep the CSV you actually need
+!data/classes.npy        # if that’s your small label map
+
+# Keras model (we don’t track the .h5 here)
+models/*.h5
+!models/final_model.tflite
+
+# IDE cruft
+*.iml
+.idea/
+*.sublime-*
+*.vscode/
+
+# macOS
+.DS_Store
 
 
 # Flutter repo-specific
