@@ -1,0 +1,98 @@
+name: medisign_ai
+description: "An AI-powered accessible communication Flutter app for hospitals."
+publish_to: 'none' # Prevent accidental publishing
+version: 1.0.0+1
+
+environment:
+  sdk: "^3.7.2"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # — Video call UI helper for web (Daily.co) —
+  daily_flutter: ^0.31.0
+  
+  # — State management & hooks —
+  provider: ^6.1.0
+  flutter_hooks: ^0.20.3
+  
+  # — Media and permissions —
+  camera: ^0.10.5+5
+  flutter_tts: ^3.8.3
+  permission_handler: ^11.0.1
+  path_provider: ^2.1.1
+  intl: ^0.19.0
+  
+  # — Maps & geolocation —
+  google_maps_flutter: ^2.2.0
+  geolocator: ^9.0.2
+  
+  # — WebRTC for mobile/desktop if you ever want native video —
+  flutter_webrtc: ^0.9.25
+  uuid: ^3.0.7
+  
+  # — Firebase Integration —
+  firebase_core: ^2.25.4
+  firebase_auth: ^4.20.0
+  cloud_firestore: ^4.17.5
+  firebase_storage: ^11.7.4
+  firebase_analytics: ^10.8.4
+  firebase_crashlytics: ^3.5.4
+  cloud_functions: ^4.1.0
+  
+  # — Social sign-in —
+  google_sign_in: ^6.2.1
+  sign_in_with_apple: ^7.0.1
+  
+  # — Image & file handling —
+  image_picker: ^1.0.7
+  cached_network_image: ^3.2.3
+  
+  # — Charts & diagrams —
+  fl_chart: ^0.63.0
+  
+  # — Local storage —
+  shared_preferences: ^2.2.2
+  
+  # — Styling, animations, UI kits —
+  animated_text_kit: ^4.2.2
+  lottie: ^2.7.0
+  
+  # — On-device ML helpers —
+  tflite_flutter: ^0.10.3
+  google_mlkit_translation: ^0.8.0
+  
+  # — HTTP & networking (pinned to support youtube_player_iframe) —
+  http: ^1.2.1
+  
+  # — Video playback —
+  video_player: ^2.9.5
+  chewie: ^1.11.3
+  
+  # — Deep links & external URLs —
+  url_launcher: ^6.3.1
+  
+  # — YouTube embed (iframe) —
+  youtube_player_iframe: ^5.1.3
+  pay: ^1.0.10
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
+  
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Poppins-Italic.ttf
+          style: italic
+          
+  assets:
+    - assets/gpay_service.json
