@@ -88,7 +88,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
               
               // Tagline
               const Text(
-                'Bridging Communication Barriers',
+                'Your Health, Our Priority',
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.grey,
