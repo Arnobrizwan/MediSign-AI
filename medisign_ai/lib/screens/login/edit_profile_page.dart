@@ -1,8 +1,9 @@
-// edit_profile_page.dart
+
 import 'dart:typed_data';
 import 'dart:async';
-import 'dart:io' show File;
-import 'package:flutter/foundation.dart';
+import 'dart:convert';
+import 'dart:io' show File, Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -63,11 +64,23 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
+  /// ──────── UPDATE FOR TESTING ON WEB ────────
+  /// If we're on Web and have picked bytes, we just convert to a
+  /// data-URI and return that.  Firestore will get a base-64 string
+  /// instead of a Storage URL.
   Future<String?> _uploadProfileImage(String uid) async {
+    // nothing new picked?
     if (pickedFile == null && webImageBytes == null) {
       return currentPhotoUrl;
     }
 
+    // Web testing: embed the bytes as a data URI
+    if (kIsWeb && webImageBytes != null) {
+      final b64 = base64Encode(webImageBytes!);
+      return 'data:image/jpeg;base64,$b64';
+    }
+
+    // Mobile/Desktop: still upload to Firebase Storage
     try {
       final ts = DateTime.now().millisecondsSinceEpoch;
       final ref = _storage.ref().child('profile_pictures/${uid}_$ts.jpg');
@@ -80,21 +93,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
         },
       );
 
-      UploadTask task;
-      if (kIsWeb && webImageBytes != null) {
-        task = ref.putData(webImageBytes!, meta);
-      } else if (pickedFile != null) {
-        task = ref.putFile(File(pickedFile!.path), meta);
-      } else {
-        return currentPhotoUrl;
-      }
+      UploadTask task = pickedFile != null
+        ? ref.putFile(File(pickedFile!.path), meta)
+        : ref.putData(webImageBytes!, meta);
 
       final snap = await task.timeout(
         const Duration(seconds: 30),
         onTimeout: () => throw TimeoutException('Upload timed out'),
       );
-      String url = (await snap.ref.getDownloadURL()).trim();
 
+      String url = (await snap.ref.getDownloadURL()).trim();
       // small delay on web so upload fully propagates
       if (kIsWeb) await Future.delayed(const Duration(seconds: 1));
       return url;
@@ -185,13 +193,28 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
+  /// ──────── UPDATED AVATAR BUILDER ────────
+  /// Now handles:
+  ///  • Web-memory images (immediately after pick)
+  ///  • Local-file images
+  ///  • Base-64 “data:” URIs in `currentPhotoUrl`
+  ///  • Fallback network or placeholder
   Widget _buildAvatar() {
+    // memory from web pick
     if (kIsWeb && webImageBytes != null) {
       return CircleAvatar(radius:50, backgroundImage: MemoryImage(webImageBytes!));
     }
+    // local file on mobile
     if (pickedFile != null) {
       return CircleAvatar(radius:50, backgroundImage: FileImage(File(pickedFile!.path)));
     }
+    // base-64 string from Firestore
+    if (currentPhotoUrl != null && currentPhotoUrl!.startsWith('data:image')) {
+      final b64 = currentPhotoUrl!.split(',').last;
+      final bytes = base64Decode(b64);
+      return CircleAvatar(radius:50, backgroundImage: MemoryImage(bytes));
+    }
+    // network URL (once your Storage CORS is fixed or in mobile)
     if ((currentPhotoUrl ?? '').isNotEmpty) {
       return CircleAvatar(
         radius:50,
@@ -202,14 +225,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
             width:100, height:100, fit:BoxFit.cover,
             loadingBuilder:(_,child,prog)=> prog==null
               ? child
-              : Center(child:CircularProgressIndicator(value: prog.expectedTotalBytes!=null
-                  ? prog.cumulativeBytesLoaded/prog.expectedTotalBytes!
-                  : null)),
+              : Center(child:CircularProgressIndicator(
+                  value: prog.expectedTotalBytes!=null
+                    ? prog.cumulativeBytesLoaded/prog.expectedTotalBytes!
+                    : null)),
             errorBuilder:(_,__,___)=> const Icon(Icons.person,size:50,color:Colors.grey),
           ),
         ),
       );
     }
+    // fallback placeholder
     return const CircleAvatar(
       radius:50,
       backgroundColor:Color(0xFFF45B69),
@@ -232,7 +257,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
             padding: const EdgeInsets.all(16),
             child: Column(
               children:[
-                // Avatar + explicit button
                 _buildAvatar(),
                 const SizedBox(height: 8),
                 TextButton.icon(
@@ -240,7 +264,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   icon: const Icon(Icons.camera_alt, color: Color(0xFFF45B69)),
                   label: const Text('Change Photo'),
                 ),
-
                 const SizedBox(height: 24),
                 TextField(
                   controller: nameController,
@@ -256,7 +279,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 24),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -286,7 +308,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     );
                   }).toList(),
                 ),
-
                 const SizedBox(height: 40),
                 ElevatedButton(
                   onPressed: isLoading ? null : _saveProfile,
@@ -313,7 +334,6 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ]
             ),
           ),
-
           if (isLoading)
             Container(
               color: Colors.black26,

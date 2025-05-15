@@ -20,12 +20,12 @@ class GeminiChatClient {
   // List of models to try in order of preference
   final List<Map<String, String>> _modelsToTry = [
     {
-      'name': 'gemini-2.5-flash-preview',
-      'endpoint': 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview:generateContent',
+      'name': '2.5-flash-preview-0417',
+      'endpoint': 'https://generativelanguage.googleapis.com/beta/models/gemini-2.5-flash-preview:generateContent',
       'apiVersion': 'v1beta'
     },
     {
-      'name': 'gemini-2.5-pro-preview',
+      'name': 'gemini-2.5-pro-preview-0506',
       'endpoint': 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview:generateContent',
       'apiVersion': 'v1beta'
     },

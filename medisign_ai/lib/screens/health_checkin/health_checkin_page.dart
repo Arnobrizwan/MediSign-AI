@@ -135,7 +135,6 @@ import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../providers/gemini_chat_client.dart';
-import '../../services/sign_to_health_service.dart';
 
 class HealthCheckinPage extends StatefulWidget {
   final String? initialSignLanguageInput;
@@ -154,18 +153,17 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
   final TextEditingController _ctr = TextEditingController();
   
   // Sign language detection
-  late SignToHealthProvider _signToHealthProvider;
   bool _isSignDetectionActive = false;
   List<CameraDescription> _cameras = [];
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
   Timer? _signDetectionTimer;
 
+  // Chat history
   List<Map<String, String>> _log = [
     {
       'sender': 'AI',
-      'message':
-          '👋 Hi there! Describe any health concern—symptoms, conditions, or questions—and I'll guide you.'
+      'message': '👋 Hi there! Describe any health concern - symptoms, conditions, or questions - and I will guide you.'
     }
   ];
 
@@ -173,9 +171,9 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
   void initState() {
     super.initState();
     
-    // Initialize sign language detection
+    // Initialize camera
     Future.delayed(Duration.zero, () {
-      _initializeSignLanguageDetection();
+      _initializeCamera();
     });
     
     // Handle initial sign language input if provided
@@ -193,16 +191,6 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
     _stopSignDetection();
     _cameraController?.dispose();
     super.dispose();
-  }
-  
-  Future<void> _initializeSignLanguageDetection() async {
-    _signToHealthProvider = Provider.of<SignToHealthProvider>(context, listen: false);
-    await _signToHealthProvider.initialize(
-      onSignDetected: _handleSignDetectionResult,
-    );
-    
-    // Initialize camera (but don't start it yet)
-    await _initializeCamera();
   }
   
   Future<void> _initializeCamera() async {
@@ -239,10 +227,6 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
     } catch (e) {
       print("Error initializing camera: $e");
     }
-  }
-  
-  void _handleSignDetectionResult(String signText) {
-    _handleSignLanguageInput(signText);
   }
   
   void _handleSignLanguageInput(String signText) {
@@ -302,13 +286,10 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
       _initializeCamera();
     }
     
-    // Enable sign detection
-    _signToHealthProvider.toggleDetection(true);
-    
-    // Start periodic frame processing
+    // Mock sign detection for demo
     _signDetectionTimer = Timer.periodic(
-      const Duration(milliseconds: 1500),
-      (_) => _processSignLanguageFrame(),
+      const Duration(seconds: 5),
+      (_) => _simulateSignDetection(),
     );
     
     setState(() {
@@ -326,9 +307,6 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
   }
   
   void _stopSignDetection() {
-    // Disable sign detection
-    _signToHealthProvider.toggleDetection(false);
-    
     // Stop timer
     _signDetectionTimer?.cancel();
     
@@ -337,22 +315,27 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
     });
   }
   
-  Future<void> _processSignLanguageFrame() async {
-    if (_cameraController == null || 
-        !_cameraController!.value.isInitialized || 
-        !_isSignDetectionActive) {
-      return;
-    }
+  // For demo purposes, simulate sign detection
+  void _simulateSignDetection() {
+    if (!_isSignDetectionActive) return;
     
-    try {
-      // Capture image
-      final XFile file = await _cameraController!.takePicture();
-      
-      // Process with sign language detection
-      await _signToHealthProvider.processFrame(file);
-    } catch (e) {
-      print("Error processing sign language frame: $e");
-    }
+    // List of common health phrases
+    final List<String> healthPhrases = [
+      'I have a headache',
+      'My stomach hurts',
+      'I feel dizzy',
+      'I need medicine',
+      'I need to see a doctor',
+      'I have a fever',
+      'I have a cough',
+    ];
+    
+    // Select a random phrase
+    final randomIndex = DateTime.now().millisecondsSinceEpoch % healthPhrases.length;
+    final phrase = healthPhrases[randomIndex];
+    
+    // Handle as sign language input
+    _handleSignLanguageInput(phrase);
   }
   
   void _showErrorSnackbar(String message) {
@@ -368,145 +351,142 @@ class _HealthCheckinPageState extends State<HealthCheckinPage> {
   Widget build(BuildContext ctx) {
     const primary = Color(0xFFF45B69);
 
-    return ChangeNotifierProvider(
-      create: (_) => SignToHealthProvider(),
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('AI Health Check-In'),
-          backgroundColor: primary,
-        ),
-        body: Column(
-          children: [
-            // Optional: Mini camera preview when sign detection is active
-            if (_isSignDetectionActive && _isCameraInitialized)
-              Container(
-                height: 120,
-                padding: const EdgeInsets.all(8),
-                alignment: Alignment.center,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: AspectRatio(
-                    aspectRatio: _cameraController!.value.aspectRatio,
-                    child: CameraPreview(_cameraController!),
-                  ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI Health Check-In'),
+        backgroundColor: primary,
+      ),
+      body: Column(
+        children: [
+          // Optional: Mini camera preview when sign detection is active
+          if (_isSignDetectionActive && _isCameraInitialized)
+            Container(
+              height: 120,
+              padding: const EdgeInsets.all(8),
+              alignment: Alignment.center,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AspectRatio(
+                  aspectRatio: _cameraController!.value.aspectRatio,
+                  child: CameraPreview(_cameraController!),
                 ),
               ),
-              
-            // Chat history
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: _log.length,
-                itemBuilder: (_, i) {
-                  final entry = _log[i];
-                  final isUser = entry['sender'] == 'User';
-                  
-                  // Check if this is a sign language message
-                  final isSignLanguage = isUser && 
-                      entry['message']!.startsWith('Sign language:');
-                  
-                  return Align(
-                    alignment:
-                        isUser ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isUser ? primary : Colors.grey[200],
-                        borderRadius: BorderRadius.circular(8),
-                        // Add icon indicator for sign language
-                        border: isSignLanguage ? Border.all(
-                          color: Colors.blue, 
-                          width: 2,
-                        ) : null,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Add sign language icon if applicable
-                          if (isSignLanguage)
-                            const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.sign_language,
+            ),
+            
+          // Chat history
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _log.length,
+              itemBuilder: (_, i) {
+                final entry = _log[i];
+                final isUser = entry['sender'] == 'User';
+                
+                // Check if this is a sign language message
+                final isSignLanguage = isUser && 
+                    entry['message']!.startsWith('Sign language:');
+                
+                return Align(
+                  alignment:
+                      isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isUser ? primary : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
+                      // Add icon indicator for sign language
+                      border: isSignLanguage ? Border.all(
+                        color: Colors.blue, 
+                        width: 2,
+                      ) : null,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Add sign language icon if applicable
+                        if (isSignLanguage)
+                          const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.sign_language,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Sign Language',
+                                style: TextStyle(
                                   color: Colors.white,
-                                  size: 16,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
                                 ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Sign Language',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          if (isSignLanguage)
-                            const SizedBox(height: 4),
-                          
-                          // Message text (clean up sign language prefix)
-                          Text(
-                            isSignLanguage
-                                ? entry['message']!.replaceFirst('Sign language: ', '')
-                                : entry['message']!,
-                            style: TextStyle(
-                                color: isUser ? Colors.white : Colors.black87),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        if (isSignLanguage)
+                          const SizedBox(height: 4),
+                        
+                        // Message text (clean up sign language prefix)
+                        Text(
+                          isSignLanguage
+                              ? entry['message']!.replaceFirst('Sign language: ', '')
+                              : entry['message']!,
+                          style: TextStyle(
+                              color: isUser ? Colors.white : Colors.black87),
+                        ),
+                      ],
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
+          ),
 
-            // Input row: voice / braille / sign / text
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.mic, color: primary),
-                    onPressed: () =>
-                        _send('Voice input: <transcribe via STT here>'),
+          // Input row: voice / braille / sign / text
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.mic, color: primary),
+                  onPressed: () =>
+                      _send('Voice input: <transcribe via STT here>'),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.accessible, color: primary),
+                  onPressed: () =>
+                      _send('Braille input: <translate braille here>'),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.sign_language, 
+                    color: _isSignDetectionActive ? Colors.green : primary,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.accessible, color: primary),
-                    onPressed: () =>
-                        _send('Braille input: <translate braille here>'),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.sign_language, 
-                      color: _isSignDetectionActive ? Colors.green : primary,
+                  onPressed: _toggleSignDetection,
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _ctr,
+                    decoration: const InputDecoration(
+                      hintText: 'Type your message…',
+                      border: OutlineInputBorder(),
                     ),
-                    onPressed: _toggleSignDetection,
                   ),
-                  Expanded(
-                    child: TextField(
-                      controller: _ctr,
-                      decoration: const InputDecoration(
-                        hintText: 'Type your message…',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: primary),
-                    onPressed: () {
-                      if (_ctr.text.isNotEmpty) _send(_ctr.text);
-                    },
-                    child: const Icon(Icons.send, color: Colors.white),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: primary),
+                  onPressed: () {
+                    if (_ctr.text.isNotEmpty) _send(_ctr.text);
+                  },
+                  child: const Icon(Icons.send, color: Colors.white),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
