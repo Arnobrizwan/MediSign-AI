@@ -1,4 +1,3 @@
-
 import 'dart:typed_data';
 import 'dart:async';
 import 'dart:convert';
@@ -58,8 +57,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        nameController.text = _auth.currentUser?.displayName ?? '';
-        currentPhotoUrl    = _auth.currentUser?.photoURL?.trim();
+        nameController.text = user.displayName ?? '';
+        currentPhotoUrl    = user.photoURL?.trim();
       });
     }
   }
@@ -69,18 +68,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
   /// data-URI and return that.  Firestore will get a base-64 string
   /// instead of a Storage URL.
   Future<String?> _uploadProfileImage(String uid) async {
-    // nothing new picked?
     if (pickedFile == null && webImageBytes == null) {
       return currentPhotoUrl;
     }
 
-    // Web testing: embed the bytes as a data URI
+    // For web: embed as data URI
     if (kIsWeb && webImageBytes != null) {
       final b64 = base64Encode(webImageBytes!);
       return 'data:image/jpeg;base64,$b64';
     }
 
-    // Mobile/Desktop: still upload to Firebase Storage
+    // Mobile/Desktop: upload to Firebase Storage
     try {
       final ts = DateTime.now().millisecondsSinceEpoch;
       final ref = _storage.ref().child('profile_pictures/${uid}_$ts.jpg');
@@ -93,7 +91,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         },
       );
 
-      UploadTask task = pickedFile != null
+      final UploadTask task = pickedFile != null
         ? ref.putFile(File(pickedFile!.path), meta)
         : ref.putData(webImageBytes!, meta);
 
@@ -151,12 +149,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   Future<void> _saveProfile() async {
     final user = _auth.currentUser;
-    if (user == null) return;
-    if (!mounted) return;
+    if (user == null || !mounted) return;
 
     setState(() => isLoading = true);
     try {
       final photoURL = await _uploadProfileImage(user.uid);
+
       final data = {
         'displayName': nameController.text.trim(),
         'name'       : nameController.text.trim(),
@@ -165,8 +163,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
         if (photoURL != null) 'photoUrl': photoURL,
       };
 
+      // Always update displayName…
       await user.updateDisplayName(nameController.text.trim());
-      if (photoURL != null) await user.updatePhotoURL(photoURL);
+
+      // …but only call updatePhotoURL when it's a real HTTP URL
+      if (photoURL != null && photoURL.startsWith(RegExp(r'https?://'))) {
+        await user.updatePhotoURL(photoURL);
+      }
+
+      // Persist to Firestore
       await _firestore.collection('users').doc(user.uid).update(data);
 
       if (!mounted) return;
@@ -176,9 +181,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
           backgroundColor: Colors.green,
         ),
       );
-      await Future.delayed(const Duration(seconds:1));
+      await Future.delayed(const Duration(seconds: 1));
       if (!mounted) return;
       Navigator.pop(context);
+
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -194,51 +200,48 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   /// ──────── UPDATED AVATAR BUILDER ────────
-  /// Now handles:
-  ///  • Web-memory images (immediately after pick)
-  ///  • Local-file images
-  ///  • Base-64 “data:” URIs in `currentPhotoUrl`
-  ///  • Fallback network or placeholder
+  /// • Web-memory images (immediately after pick)
+  /// • Local-file images
+  /// • Base-64 `data:` URIs in Firestore
+  /// • Network URLs (once CORS is fixed or on mobile)
   Widget _buildAvatar() {
-    // memory from web pick
     if (kIsWeb && webImageBytes != null) {
-      return CircleAvatar(radius:50, backgroundImage: MemoryImage(webImageBytes!));
+      return CircleAvatar(radius: 50, backgroundImage: MemoryImage(webImageBytes!));
     }
-    // local file on mobile
     if (pickedFile != null) {
-      return CircleAvatar(radius:50, backgroundImage: FileImage(File(pickedFile!.path)));
+      return CircleAvatar(radius: 50, backgroundImage: FileImage(File(pickedFile!.path)));
     }
-    // base-64 string from Firestore
     if (currentPhotoUrl != null && currentPhotoUrl!.startsWith('data:image')) {
       final b64 = currentPhotoUrl!.split(',').last;
       final bytes = base64Decode(b64);
-      return CircleAvatar(radius:50, backgroundImage: MemoryImage(bytes));
+      return CircleAvatar(radius: 50, backgroundImage: MemoryImage(bytes));
     }
-    // network URL (once your Storage CORS is fixed or in mobile)
     if ((currentPhotoUrl ?? '').isNotEmpty) {
       return CircleAvatar(
-        radius:50,
-        backgroundColor:Colors.grey.shade200,
+        radius: 50,
+        backgroundColor: Colors.grey.shade200,
         child: ClipOval(
           child: Image.network(
             currentPhotoUrl!,
-            width:100, height:100, fit:BoxFit.cover,
-            loadingBuilder:(_,child,prog)=> prog==null
-              ? child
-              : Center(child:CircularProgressIndicator(
-                  value: prog.expectedTotalBytes!=null
-                    ? prog.cumulativeBytesLoaded/prog.expectedTotalBytes!
-                    : null)),
-            errorBuilder:(_,__,___)=> const Icon(Icons.person,size:50,color:Colors.grey),
+            width: 100, height: 100, fit: BoxFit.cover,
+            loadingBuilder: (_, child, prog) =>
+              prog == null
+                ? child
+                : Center(child: CircularProgressIndicator(
+                    value: prog.expectedTotalBytes != null
+                      ? prog.cumulativeBytesLoaded / prog.expectedTotalBytes!
+                      : null,
+                  )),
+            errorBuilder: (_, __, ___) =>
+              const Icon(Icons.person, size: 50, color: Colors.grey),
           ),
         ),
       );
     }
-    // fallback placeholder
     return const CircleAvatar(
-      radius:50,
-      backgroundColor:Color(0xFFF45B69),
-      child:Icon(Icons.person,size:50,color:Colors.white),
+      radius: 50,
+      backgroundColor: Color(0xFFF45B69),
+      child: Icon(Icons.person, size: 50, color: Colors.white),
     );
   }
 
@@ -256,7 +259,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
-              children:[
+              children: [
                 _buildAvatar(),
                 const SizedBox(height: 8),
                 TextButton.icon(
@@ -320,18 +323,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                         )
-                      : const Text(
-                          'Save Changes',
-                          style: TextStyle(color: Colors.white, fontSize: 18),
-                        ),
+                      : const Text('Save Changes', style: TextStyle(color: Colors.white, fontSize: 18)),
                 ),
                 const SizedBox(height: 24),
-              ]
+              ],
             ),
           ),
           if (isLoading)
@@ -341,7 +338,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 child: CircularProgressIndicator(color: Color(0xFFF45B69)),
               ),
             ),
-        ]
+        ],
       ),
     );
   }
