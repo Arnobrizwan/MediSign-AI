@@ -1,5 +1,3 @@
-// lib/ml/hand_tracking_processor.dart
-
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
@@ -48,7 +46,7 @@ class HandTrackingProcessor {
       
       // Read image
       final bytes = await file.readAsBytes();
-      final inputImage = await _preprocessImage(bytes, file.path);
+      final inputImage = InputImage.fromFilePath(file.path);
       
       // Detect hands using ML Kit
       final hands = await _handsDetector.processImage(inputImage);
@@ -72,13 +70,6 @@ class HandTrackingProcessor {
       print('Error processing image: $e');
       return null;
     }
-  }
-  
-  // Preprocess image for ML Kit
-  Future<InputImage> _preprocessImage(Uint8List bytes, String path) async {
-    // Create input image from file path
-    final inputImage = InputImage.fromFilePath(path);
-    return inputImage;
   }
   
   // Clean up resources

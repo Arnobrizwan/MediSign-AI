@@ -13,6 +13,8 @@ import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import '../../providers/accessibility_provider.dart';
+import '../../services/sign_to_health_service.dart';
+import '../health_checkin/health_checkin_page.dart';
 
 class SignTranslatePage extends StatefulWidget {
   const SignTranslatePage({super.key});
@@ -32,6 +34,7 @@ class _SignTranslatePageState extends State<SignTranslatePage> with WidgetsBindi
   bool _isDetecting = false;
   bool _isProcessingFrame = false;
   Timer? _detectionTimer;
+  Timer? _signDetectionTimer;
   
   // Translation settings
   String _inputMethod = 'Sign to Text/Speech';
@@ -39,6 +42,7 @@ class _SignTranslatePageState extends State<SignTranslatePage> with WidgetsBindi
   String _inputLanguage = 'BIM';
   String _outputLanguage = 'English';
   bool _autoDetect = true;
+  bool _sendToHealthCheckin = false;
   
   // Firebase
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -52,12 +56,8 @@ class _SignTranslatePageState extends State<SignTranslatePage> with WidgetsBindi
   List<TranslationItem> _translationItems = [];
   String? _currentSessionId;
   
-  // For ML model
-  static const String _modelEndpoint = 'https://your-model-endpoint.com/predict';
-  static const Map<String, String> _apiHeaders = {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer your_api_key_here'
-  };
+  // Sign language service
+  late SignToHealthProvider _signToHealthProvider;
   
   @override
   void initState() {
@@ -66,6 +66,51 @@ class _SignTranslatePageState extends State<SignTranslatePage> with WidgetsBindi
     _initializeCamera();
     _initializeTts();
     _generateSessionId();
+    
+    // Initialize sign language detection
+    Future.delayed(Duration.zero, () {
+      _initializeSignLanguageDetection();
+    });
+  }
+  
+  Future<void> _initializeSignLanguageDetection() async {
+    _signToHealthProvider = Provider.of<SignToHealthProvider>(context, listen: false);
+    await _signToHealthProvider.initialize(
+      onSignDetected: _handleSignDetection,
+    );
+  }
+  
+  void _handleSignDetection(String signText) {
+    // Add to translations
+    setState(() {
+      _translationItems.add(
+        TranslationItem(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          sign: signText.split(' ')[0], // Use first word as sign name
+          text: signText,
+          confidence: 0.9,
+          timestamp: Timestamp.now(),
+          imagePath: null,
+        ),
+      );
+    });
+    
+    // If forwarding to health check-in is enabled
+    if (_sendToHealthCheckin) {
+      _forwardToHealthCheckin(signText);
+    }
+  }
+  
+  void _forwardToHealthCheckin(String signText) {
+    // Navigate to health check-in page with the sign language input
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HealthCheckinPage(
+          initialSignLanguageInput: signText,
+        ),
+      ),
+    );
   }
   
   @override
@@ -176,7 +221,15 @@ class _SignTranslatePageState extends State<SignTranslatePage> with WidgetsBindi
       return;
     }
     
+    // Start traditional detection (existing code)
     _detectionTimer = Timer.periodic(const Duration(seconds: 1), (_) => _processFrame());
+    
+    // Start sign language detection
+    _signToHealthProvider.toggleDetection(true);
+    _signDetectionTimer = Timer.periodic(
+      const Duration(milliseconds: 1500),
+      (_) => _processSignLanguageFrame(),
+    );
     
     setState(() {
       _isDetecting = true;
@@ -184,10 +237,34 @@ class _SignTranslatePageState extends State<SignTranslatePage> with WidgetsBindi
   }
   
   void _stopDetection() {
+    // Stop traditional detection
     _detectionTimer?.cancel();
+    
+    // Stop sign language detection
+    _signToHealthProvider.toggleDetection(false);
+    _signDetectionTimer?.cancel();
+    
     setState(() {
       _isDetecting = false;
     });
+  }
+  
+  Future<void> _processSignLanguageFrame() async {
+    if (_cameraController == null || 
+        !_cameraController!.value.isInitialized || 
+        !_isDetecting) {
+      return;
+    }
+    
+    try {
+      // Capture image
+      final XFile file = await _cameraController!.takePicture();
+      
+      // Process with sign language detection
+      await _signToHealthProvider.processFrame(file);
+    } catch (e) {
+      print("Error processing sign language frame: $e");
+    }
   }
   
   Future<void> _processFrame() async {
@@ -434,286 +511,337 @@ class _SignTranslatePageState extends State<SignTranslatePage> with WidgetsBindi
     final primaryColor = const Color(0xFFF45B69);
     final textSize = acc.fontSize / 16.0;
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Sign Language Translator',
-          style: TextStyle(
-            color: primaryColor, 
-            fontWeight: FontWeight.bold,
-            fontSize: 20 * textSize,
+    return ChangeNotifierProvider(
+      create: (_) => SignToHealthProvider(),
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 1,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.black),
+            onPressed: () => Navigator.pop(context),
           ),
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              Icons.switch_camera,
-              color: _isCameraInitialized ? Colors.black : Colors.grey,
+          title: Text(
+            'Sign Language Translator',
+            style: TextStyle(
+              color: primaryColor, 
+              fontWeight: FontWeight.bold,
+              fontSize: 20 * textSize,
             ),
-            onPressed: _isCameraInitialized ? _switchCamera : null,
           ),
-        ],
-      ),
-      body: _isProcessingFrame && _translationItems.isEmpty
-        ? const Center(child: CircularProgressIndicator())
-        : Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                // Camera View Area
-                AspectRatio(
-                  aspectRatio: 3 / 4,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: _isCameraInitialized
-                      ? CameraPreview(_cameraController!)
-                      : Container(
-                          color: Colors.grey.shade300,
-                          child: const Center(child: Text('Initializing camera...')),
-                        ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Central Camera/Mic Button
-                ElevatedButton.icon(
-                  onPressed: _isCameraInitialized ? _toggleDetection : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-                  ),
-                  icon: Icon(_isDetecting ? Icons.stop : Icons.videocam),
-                  label: Text(
-                    _isDetecting ? 'Stop Detection' : 'Start Detection',
-                    style: TextStyle(fontSize: 16 * textSize),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Collapsible settings panel
-                ExpansionTile(
-                  title: Text('Settings', 
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18 * textSize,
+          actions: [
+            IconButton(
+              icon: Icon(
+                Icons.switch_camera,
+                color: _isCameraInitialized ? Colors.black : Colors.grey,
+              ),
+              onPressed: _isCameraInitialized ? _switchCamera : null,
+            ),
+          ],
+        ),
+        body: _isProcessingFrame && _translationItems.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  // Camera View Area
+                  AspectRatio(
+                    aspectRatio: 3 / 4,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: _isCameraInitialized
+                        ? CameraPreview(_cameraController!)
+                        : Container(
+                            color: Colors.grey.shade300,
+                            child: const Center(child: Text('Initializing camera...')),
+                          ),
                     ),
                   ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          DropdownButtonFormField<String>(
-                            value: _inputMethod,
-                            decoration: _dropdownDecoration('Input Method'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'Sign to Text/Speech', 
-                                child: Text('Sign to Text/Speech')
-                              ),
-                              DropdownMenuItem(
-                                value: 'Text/Speech to Sign', 
-                                child: Text('Text/Speech to Sign')
-                              ),
-                            ],
-                            onChanged: (value) {
-                              setState(() => _inputMethod = value!);
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            value: _outputFormat,
-                            decoration: _dropdownDecoration('Output Format'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'Text-Only', 
-                                child: Text('Text-Only')
-                              ),
-                              DropdownMenuItem(
-                                value: 'Text-to-Speech', 
-                                child: Text('Text-to-Speech')
-                              ),
-                              DropdownMenuItem(
-                                value: 'Braille Format', 
-                                child: Text('Braille Format')
-                              ),
-                            ],
-                            onChanged: (value) {
-                              setState(() => _outputFormat = value!);
-                              if (value == 'Text-to-Speech') {
-                                _initializeTts();
-                              }
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            value: _inputLanguage,
-                            decoration: _dropdownDecoration('Input Sign Language'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'BIM', 
-                                child: Text('Malaysian Sign Language (BIM)')
-                              ),
-                              DropdownMenuItem(
-                                value: 'BISINDO', 
-                                child: Text('Indonesian Sign Language (BISINDO)')
-                              ),
-                            ],
-                            onChanged: (value) {
-                              setState(() => _inputLanguage = value!);
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            value: _outputLanguage,
-                            decoration: _dropdownDecoration('Output Language'),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'English', 
-                                child: Text('English')
-                              ),
-                              DropdownMenuItem(
-                                value: 'Malay', 
-                                child: Text('Malay')
-                              ),
-                            ],
-                            onChanged: (value) {
-                              setState(() => _outputLanguage = value!);
-                              _initializeTts();
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          SwitchListTile(
-                            title: Text(
-                              'Auto-Detect Language',
-                              style: TextStyle(fontSize: 16 * textSize),
-                            ),
-                            value: _autoDetect,
-                            onChanged: (val) => setState(() => _autoDetect = val),
-                          ),
-                        ],
+                  const SizedBox(height: 16),
+
+                  // Central Camera/Mic Button
+                  ElevatedButton.icon(
+                    onPressed: _isCameraInitialized ? _toggleDetection : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+                    ),
+                    icon: Icon(_isDetecting ? Icons.stop : Icons.videocam),
+                    label: Text(
+                      _isDetecting ? 'Stop Detection' : 'Start Detection',
+                      style: TextStyle(fontSize: 16 * textSize),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Collapsible settings panel
+                  ExpansionTile(
+                    title: Text('Settings', 
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18 * textSize,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                
-                // Translations
-                Text(
-                  'Translations',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18 * textSize, 
-                    color: primaryColor,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                
-                // Real-time Translation Bubbles
-                Expanded(
-                  child: _translationItems.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No translations yet. Tap "Start Detection" to begin.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.grey.shade600,
-                            fontSize: 16 * textSize,
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _translationItems.length,
-                        itemBuilder: (context, index) {
-                          final item = _translationItems[index];
-                          return Card(
-                            elevation: 1,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            DropdownButtonFormField<String>(
+                              value: _inputMethod,
+                              decoration: _dropdownDecoration('Input Method'),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'Sign to Text/Speech', 
+                                  child: Text('Sign to Text/Speech')
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Text/Speech to Sign', 
+                                  child: Text('Text/Speech to Sign')
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setState(() => _inputMethod = value!);
+                              },
                             ),
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              value: _outputFormat,
+                              decoration: _dropdownDecoration('Output Format'),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'Text-Only', 
+                                  child: Text('Text-Only')
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Text-to-Speech', 
+                                  child: Text('Text-to-Speech')
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Braille Format', 
+                                  child: Text('Braille Format')
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setState(() => _outputFormat = value!);
+                                if (value == 'Text-to-Speech') {
+                                  _initializeTts();
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              value: _inputLanguage,
+                              decoration: _dropdownDecoration('Input Sign Language'),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'BIM', 
+                                  child: Text('Malaysian Sign Language (BIM)')
+                                ),
+                                DropdownMenuItem(
+                                  value: 'BISINDO', 
+                                  child: Text('Indonesian Sign Language (BISINDO)')
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setState(() => _inputLanguage = value!);
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              value: _outputLanguage,
+                              decoration: _dropdownDecoration('Output Language'),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'English', 
+                                  child: Text('English')
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Malay', 
+                                  child: Text('Malay')
+                                ),
+                              ],
+                              onChanged: (value) {
+                                setState(() => _outputLanguage = value!);
+                                _initializeTts();
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                            SwitchListTile(
                               title: Text(
-                                'Sign: ${item.sign} → Text: ${item.text}',
+                                'Auto-Detect Language',
+                                style: TextStyle(fontSize: 16 * textSize),
+                              ),
+                              value: _autoDetect,
+                              onChanged: (val) => setState(() => _autoDetect = val),
+                            ),
+                            const SizedBox(height: 8),
+                            SwitchListTile(
+                              title: Text(
+                                'Send to Health Check-in',
                                 style: TextStyle(fontSize: 16 * textSize),
                               ),
                               subtitle: Text(
-                                'Confidence: ${(item.confidence * 100).toStringAsFixed(1)}%',
-                                style: TextStyle(
-                                  fontSize: 14 * textSize,
-                                  color: Colors.grey.shade600,
-                                ),
+                                'Forward detected signs to Health Assistant',
+                                style: TextStyle(fontSize: 14 * textSize),
                               ),
-                              trailing: _outputFormat == 'Text-to-Speech'
-                                ? IconButton(
-                                    icon: const Icon(Icons.volume_up),
-                                    onPressed: () => _speakText(item.text),
-                                  )
-                                : null,
+                              value: _sendToHealthCheckin,
+                              onChanged: (val) => setState(() => _sendToHealthCheckin = val),
+                              activeColor: primaryColor,
                             ),
-                          );
-                        },
-                      ),
-                ),
-
-                // Action Buttons Row
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _clearConversation,
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          icon: const Icon(Icons.clear),
-                          label: Text(
-                            'Clear',
-                            style: TextStyle(fontSize: 16 * textSize),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _saveSession,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: primaryColor,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          icon: const Icon(Icons.save),
-                          label: Text(
-                            'Save',
-                            style: TextStyle(fontSize: 16 * textSize),
-                          ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  
+                  // Translations title with Health Check-in button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Translations',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18 * textSize, 
+                          color: primaryColor,
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const HealthCheckinPage(),
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                        child: Text(
+                          'Health Check-in',
+                          style: TextStyle(fontSize: 14 * textSize),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  // Real-time Translation Bubbles
+                  Expanded(
+                    child: _translationItems.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No translations yet. Tap "Start Detection" to begin.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 16 * textSize,
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: _translationItems.length,
+                          itemBuilder: (context, index) {
+                            final item = _translationItems[index];
+                            return Card(
+                              elevation: 1,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: ListTile(
+                                title: Text(
+                                  'Sign: ${item.sign} → Text: ${item.text}',
+                                  style: TextStyle(fontSize: 16 * textSize),
+                                ),
+                                subtitle: Text(
+                                  'Confidence: ${(item.confidence * 100).toStringAsFixed(1)}%',
+                                  style: TextStyle(
+                                    fontSize: 14 * textSize,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_outputFormat == 'Text-to-Speech')
+                                      IconButton(
+                                        icon: const Icon(Icons.volume_up),
+                                        onPressed: () => _speakText(item.text),
+                                      ),
+                                    IconButton(
+                                      icon: const Icon(Icons.medical_services_outlined),
+                                      color: primaryColor,
+                                      onPressed: () => _forwardToHealthCheckin(item.text),
+                                      tooltip: 'Send to Health Check-in',
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                  ),
+
+                  // Action Buttons Row
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _clearConversation,
+                            style: OutlinedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            icon: const Icon(Icons.clear),
+                            label: Text(
+                              'Clear',
+                              style: TextStyle(fontSize: 16 * textSize),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: _saveSession,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            icon: const Icon(Icons.save),
+                            label: Text(
+                              'Save',
+                              style: TextStyle(fontSize: 16 * textSize),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+      ),
     );
   }
 
