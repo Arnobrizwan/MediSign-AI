@@ -36,32 +36,8 @@ exports.onNewUser = functions.auth.user().onCreate(async (userRecord) => {
     return null;
   }
 
+  // Skip Gemini API call and use the fallback message directly
   let onboardingMessage = getRandomFallbackMessage(email);
-
-  try {
-    // Updated request format for Gemini API
-    const res = await axios.post(GEMINI_ENDPOINT, {
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: `Welcome new user ${email}. Generate a friendly onboarding message.` }]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        candidateCount: 1
-      }
-    }, { timeout: 20000 });
-
-    console.log('✅ Gemini API response:', res.status);
-    
-    // Updated response parsing
-    const candidate = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (candidate) onboardingMessage = candidate;
-
-  } catch (err) {
-    console.warn('⚠️ Gemini onboarding fallback:', err.response?.status, err.response?.data || err.message);
-  }
 
   await admin.firestore().collection('users').doc(uid).set({
     uid,
@@ -80,104 +56,44 @@ exports.getGeminiWelcomeMessage = functions.https.onCall(async (data) => {
   const email = data.email;
   if (!email) throw new functions.https.HttpsError('invalid-argument', 'Email is required.');
 
-  let message = getRandomFallbackMessage(email);
-
-  try {
-    // Updated request format for Gemini API
-    const res = await axios.post(GEMINI_ENDPOINT, {
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: `Welcome back, ${email}! Generate a personalized welcome message.` }]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.2,
-        candidateCount: 1
-      }
-    }, { timeout: 20000 });
-
-    // Updated response parsing
-    const candidate = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (candidate) message = candidate;
-
-  } catch (err) {
-    console.warn('⚠️ Gemini welcome fallback:', err.response?.status, err.response?.data || err.message);
-  }
-
+  // Skip Gemini API call and use the fallback message directly
+  const message = getRandomFallbackMessage(email);
   return { message };
 });
 
 // —–– 3) Callable: translate text —––––––––––––––––––––––––––––––––––––
-const translationClient = new TranslationServiceClient();
 exports.translateText = functions.https.onCall(async (data) => {
+  // Initialize client inside the function instead of globally
+  const translationClient = new TranslationServiceClient();
+  
   const text = data.text;
   const targetLang = data.targetLang || 'en';
   if (!text) throw new functions.https.HttpsError('invalid-argument', 'No text provided.');
 
-  const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-  const request = {
-    parent: `projects/${projectId}/locations/global`,
-    contents: [text],
-    mimeType: 'text/plain',
-    targetLanguageCode: targetLang,
-  };
+  try {
+    const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+    const request = {
+      parent: `projects/${projectId}/locations/global`,
+      contents: [text],
+      mimeType: 'text/plain',
+      targetLanguageCode: targetLang,
+    };
 
-  const [response] = await translationClient.translateText(request);
-  return { translatedText: response.translations?.[0]?.translatedText || '' };
+    const [response] = await translationClient.translateText(request);
+    return { translatedText: response.translations?.[0]?.translatedText || '' };
+  } catch (err) {
+    console.error('❌ Translation API error:', err);
+    throw new functions.https.HttpsError('internal', 'Translation failed: ' + err.message);
+  }
 });
 
 // —–– 4) Callable: chat via Gemini proxy —––––––––––––––––––––––––––––––
+// This function serves as a placeholder that returns a fallback message
+// since you're implementing Gemini API directly in your frontend
 exports.chatWithGemini = functions.https.onCall(async (data) => {
-  const userInput     = data.userInput;
-  const systemPrompt  = data.systemPrompt;
-  const temperature   = data.temperature   ?? 0.4;
-  const candidateCount= data.candidateCount ?? 1;
-
-  if (typeof userInput !== 'string' || typeof systemPrompt !== 'string') {
-    throw new functions.https.HttpsError('invalid-argument',
-      'userInput and systemPrompt must be strings');
-  }
-
-  // Updated payload format for current Gemini API
-  const payload = {
-    contents: [
-      {
-        role: "user",
-        parts: [
-          { text: systemPrompt },
-          { text: userInput }
-        ]
-      }
-    ],
-    generationConfig: {
-      temperature,
-      candidateCount
-    }
-  };
-
-  console.log('🔄 Sending request to Gemini API...');
+  const userInput = data.userInput || '';
   
-  try {
-    const res = await axios.post(GEMINI_ENDPOINT, payload, {
-      timeout: 20000,
-      headers: { 'Content-Type': 'application/json' }
-    });
-
-    console.log('✅ Gemini API response status:', res.status);
-    
-    // Updated response parsing
-    const candidate = res.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!candidate) {
-      console.error('❌ Gemini returned no candidates:', res.data);
-      throw new Error('No candidate in Gemini response');
-    }
-    
-    console.log('✅ Gemini response received successfully');
-    return { reply: candidate };
-
-  } catch (err) {
-    console.error('❌ Gemini API error:', err.response?.status, err.response?.data || err.message);
-    throw new functions.https.HttpsError('internal', 'Failed to fetch from Gemini');
-  }
+  return { 
+    reply: "I'm processing your request through the frontend Gemini API implementation. If you're seeing this message, please ensure you're using the latest version of the app."
+  };
 });
